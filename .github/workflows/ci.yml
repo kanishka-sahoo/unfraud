@@ -43,3 +43,23 @@ jobs:
           version: v4.3.0
       - run: helm lint deploy/helm/unfraud
       - run: helm lint deploy/helm/unfraud -f deploy/helm/unfraud/values-full.yaml
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: API types match api/openapi.yaml
+        run: pnpm gen:api && git diff --exit-code src/lib/schema.d.ts
+      - run: pnpm lint
+      - run: pnpm exec next typegen && pnpm exec tsc --noEmit
+      - run: pnpm build

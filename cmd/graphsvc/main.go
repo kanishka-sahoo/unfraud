@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,7 +18,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -112,16 +115,36 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer cl.Close()
-	go serve(log, *listen)
+	// The graph is read by /neighborhood while the loop below updates it.
+	var mu sync.Mutex
+	var lastMs int64
+	go serve(log, *listen, func(w http.ResponseWriter, r *http.Request) {
+		node := r.URL.Query().Get("node")
+		hops, _ := strconv.Atoi(r.URL.Query().Get("hops"))
+		if node == "" || hops < 1 || hops > 4 {
+			http.Error(w, "need node and hops 1-4", http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		sg, ok := sc.Engine().Neighborhood(lastMs, node, hops, 300)
+		mu.Unlock()
+		if !ok {
+			http.Error(w, "this profile has no graph", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sg)
+	})
 	log.Info("graphsvc starting", "profile", p.Name, "input", in, "output", out, "model", version,
 		"resume_offsets", committed)
 
 	buf := align.NewBuffer()
 	next := map[int32]int64{} // offset after the last record processed, per partition
-	emit := func(d *scoring.Decision, ingested time.Time) error {
+	emit := func(d *scoring.Decision, ingested time.Time) {
 		b, err := proto.Marshal(scoring.Proto(p.Name, version, unfraudv1.Stage_STAGE_REVISED, d, ingested, time.Now()))
 		if err != nil {
-			return err
+			log.Error("marshal failed", "event", d.EventID, "err", err)
+			return
 		}
 		revised.WithLabelValues(p.Name, d.Action.String()).Inc()
 		cl.Produce(ctx, &kgo.Record{Key: []byte(d.EventID), Value: b}, func(_ *kgo.Record, err error) {
@@ -129,7 +152,6 @@ func run(log *slog.Logger) error {
 				log.Error("produce failed", "event", d.EventID, "err", err)
 			}
 		})
-		return nil
 	}
 	for {
 		fetches := cl.PollFetches(ctx)
@@ -169,14 +191,17 @@ func run(log *slog.Logger) error {
 			if len(chunk) == 0 {
 				break
 			}
+			mu.Lock()
 			for _, it := range chunk {
 				in := it.Value.(input)
 				// Records before the committed offset only rebuild state.
 				live := in.rec.Offset >= committed[in.rec.Partition]
 				d, err := sc.Process(ctx, in.env)
 				if err != nil {
+					mu.Unlock()
 					return fmt.Errorf("partition %d offset %d: %w", in.rec.Partition, in.rec.Offset, err)
 				}
+				lastMs = in.env.EventTimeMs
 				closed := sc.Closed()
 				sc.Revisions() // Ring Revisions are reported by case-svc's stream, not here
 				next[in.rec.Partition] = in.rec.Offset + 1
@@ -186,16 +211,13 @@ func run(log *slog.Logger) error {
 					continue
 				}
 				if d != nil {
-					if err := emit(d, in.rec.Timestamp); err != nil {
-						return err
-					}
+					emit(d, in.rec.Timestamp)
 				}
 				for _, c := range closed {
-					if err := emit(c, in.rec.Timestamp); err != nil {
-						return err
-					}
+					emit(c, in.rec.Timestamp)
 				}
 			}
+			mu.Unlock()
 		}
 		if err := cl.Flush(ctx); err != nil {
 			return err
@@ -259,8 +281,9 @@ func commit(ctx context.Context, adm *kadm.Client, group, topic string, next, co
 	return resp.Error()
 }
 
-func serve(log *slog.Logger, addr string) {
+func serve(log *slog.Logger, addr string, neighborhood http.HandlerFunc) {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/neighborhood", neighborhood)
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	if err := http.ListenAndServe(addr, mux); err != nil {

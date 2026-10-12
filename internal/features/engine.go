@@ -109,6 +109,18 @@ func (e *Engine) Revised() []graph.Revised {
 	return e.flow.Revised()
 }
 
+// Neighborhood returns a Node's graph neighbourhood, from the attribute
+// graph or the flow graph, whichever the Profile has.
+func (e *Engine) Neighborhood(t int64, node string, hops, maxNodes int) (graph.Subgraph, bool) {
+	switch {
+	case e.graph != nil:
+		return e.graph.Neighborhood(t, node, hops, maxNodes), true
+	case e.flow != nil:
+		return e.flow.Neighborhood(node, hops, maxNodes), true
+	}
+	return graph.Subgraph{}, false
+}
+
 // FlowColumns names Revised values, or nil without a flow graph.
 func (e *Engine) FlowColumns() []string {
 	if e.flow == nil {

@@ -6,7 +6,7 @@ A real-time fraud detection engine. It scores transactions as they stream in, li
 - Decisions: [`docs/adr/`](docs/adr)
 - Vocabulary: [`CONTEXT.md`](CONTEXT.md)
 
-**Status:** milestone 3 (scoring). Datasets replay into Kafka; a Go feature engine computes 30 real-time features exactly as of each Event's time (in memory for training, in Valkey live, bit-identical); LightGBM models are trained in Python and served by a Go evaluator whose scores and TreeSHAP values match LightGBM exactly; the scorer runs in the cluster at about 1,300 events/s. Graph, cases and the web app are next.
+**Status:** milestone 3 (scoring). Datasets replay into Kafka; a Go feature engine computes 30 real-time features exactly as of each Event's time (in memory for training, in Valkey live, bit-identical); LightGBM models are trained in Python and served by a Go evaluator whose scores and TreeSHAP values match LightGBM exactly; the scorer runs in the cluster at about 1,300 events/s. graph-svc revises decisions with graph features, case-svc opens cases with TreeSHAP explanations, the summarizer writes grounded summaries, and a Next.js console (`make console`) shows it all. Hardening and final benchmarks are next.
 
 Current results: [`results/ieee-cis-lightgbm.md`](results/ieee-cis-lightgbm.md).
 

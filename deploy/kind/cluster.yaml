@@ -18,3 +18,7 @@ nodes:
       - containerPort: 30093
         hostPort: 30093
         listenAddress: 127.0.0.1
+      # The web console.
+      - containerPort: 30080
+        hostPort: 30080
+        listenAddress: 127.0.0.1

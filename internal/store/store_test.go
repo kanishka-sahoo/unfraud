@@ -117,3 +117,18 @@ func TestOneBatchMayFlagACaseTwice(t *testing.T) {
 		t.Fatalf("action %d codes %v", action, codes)
 	}
 }
+
+func TestEqualActionsPreferTheEarlierStage(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	// The Revised Decision is consumed first; the Provisional one, equally
+	// strict, arrives later and takes over.
+	s.UpsertCases(ctx, []Decision{dec("d", 2, 2, .99)})
+	need, _ := s.UpsertCases(ctx, []Decision{dec("d", 1, 2, .97)})
+	var by int16
+	var version string
+	s.Pool.QueryRow(ctx, `SELECT flagged_by, model_version FROM cases WHERE event_id = 'd'`).Scan(&by, &version)
+	if len(need) != 1 || by != 1 || version != "m1" {
+		t.Fatalf("need %v, flagged_by %d, model %s; want a recompute, 1, m1", need, by, version)
+	}
+}

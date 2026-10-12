@@ -152,12 +152,12 @@ func handle(ctx context.Context, st *store.Store, byVersion map[string]*model.Mo
 	if err != nil {
 		return fmt.Errorf("upserting cases: %w", err)
 	}
-	// Explain each Case with the strictest Decision for it in this batch,
-	// which is the one UpsertCases recorded.
+	// Explain each Case with the Decision UpsertCases recorded: the
+	// strictest in this batch, the earlier Stage on ties.
 	strictest := map[store.CaseKey]*unfraudv1.Scored{}
 	for _, s := range batch {
 		k := store.CaseKey{Profile: s.Profile, EventID: s.EventId}
-		if prev, ok := strictest[k]; !ok || s.Action > prev.Action {
+		if prev, ok := strictest[k]; !ok || s.Action > prev.Action || s.Action == prev.Action && s.Stage < prev.Stage {
 			strictest[k] = s
 		}
 	}

@@ -87,6 +87,10 @@ graph:
   # Profile -> Revision model image. graph-svc runs for each entry.
   models: {}
 
+web:
+  # Reachable at http://localhost:30080 through kind's port mapping.
+  nodePort: 30080
+
 # Rendered on demand by `make replay`, never by `helm install`.
 replay:
   profile: ""

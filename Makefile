@@ -8,7 +8,7 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model secrets cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model secrets console cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -60,6 +60,7 @@ build: ## Build all commands into bin/
 	go build -o bin/ ./cmd/...
 
 images: ## Build images and load them into the kind cluster
+	docker build -q -f deploy/docker/Dockerfile.web -t unfraud/web:$(TAG) . && kind load docker-image --name $(CLUSTER) unfraud/web:$(TAG)
 	@for c in $(CMDS); do \
 	  docker build -q -f deploy/docker/Dockerfile --build-arg CMD=$$c -t unfraud/$$c:$(TAG) . && \
 	  kind load docker-image --name $(CLUSTER) unfraud/$$c:$(TAG); \
@@ -79,6 +80,9 @@ secrets: ## Load the OpenRouter key from ~/.config/unfraud/openrouter_key into t
 	@test -s $(HOME)/.config/unfraud/openrouter_key || { echo "put your OpenRouter key in ~/.config/unfraud/openrouter_key (chmod 600)"; exit 1; }
 	kubectl -n $(NAMESPACE) create secret generic openrouter --from-file=api-key=$(HOME)/.config/unfraud/openrouter_key \
 	  --dry-run=client -o yaml | kubectl apply -f -
+
+console: ## Open the web console on http://localhost:3000 (port-forward; new clusters also map :30080)
+	kubectl -n $(NAMESPACE) port-forward svc/web 3000:3000
 
 cluster-up: ## Create the kind cluster and install operators
 	./deploy/kind/up.sh

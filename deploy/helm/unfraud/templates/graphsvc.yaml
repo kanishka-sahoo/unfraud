@@ -1,5 +1,18 @@
 {{- range $profile, $image := .Values.graph.models }}
 ---
+# cases-api reads graph neighbourhoods from here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: graphsvc-{{ $profile }}
+  labels:
+    {{- include "unfraud.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: graphsvc
+    unfraud.dev/profile: {{ $profile }}
+  ports: [{ name: http, port: 8080 }]
+---
 # graph-svc is a single writer (ADR-0007): exactly one replica, replaced
 # rather than rolled, so two never write Revised Decisions at once.
 apiVersion: apps/v1

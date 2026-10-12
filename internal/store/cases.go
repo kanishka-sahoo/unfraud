@@ -10,18 +10,19 @@ import (
 
 // Decision is one row of the decisions table.
 type Decision struct {
-	Profile, EventID string
-	Stage            int16
-	EventTime        time.Time
-	Probability      float32
-	ModelAction      int16
-	RuleAction       int16
-	Action           int16
-	ReasonCodes      []string
-	ModelVersion     string
-	ScoredAt         time.Time
-	IngestedAt       time.Time
-	Entities         map[string]string
+	Profile      string            `json:"profile"`
+	EventID      string            `json:"event_id"`
+	Stage        int16             `json:"stage"`
+	EventTime    time.Time         `json:"event_time"`
+	Probability  float32           `json:"probability"`
+	ModelAction  int16             `json:"model_action"`
+	RuleAction   int16             `json:"rule_action"`
+	Action       int16             `json:"action"`
+	ReasonCodes  []string          `json:"reason_codes"`
+	ModelVersion string            `json:"model_version"`
+	ScoredAt     time.Time         `json:"scored_at"`
+	IngestedAt   time.Time         `json:"ingested_at"`
+	Entities     map[string]string `json:"entities,omitempty"`
 }
 
 // InsertDecisions stores Decisions, ignoring ones already stored.
@@ -54,9 +55,15 @@ func (s *Store) InsertDecisions(ctx context.Context, ds []Decision) error {
 // CaseKey identifies a Case.
 type CaseKey struct{ Profile, EventID string }
 
+// takeover is when a new Decision replaces the one a Case reflects: it is
+// stricter, or equally strict from an earlier Stage (Provisional before
+// Revised), whatever order the topics were consumed in.
+const takeover = `(EXCLUDED.action > c.action OR (EXCLUDED.action = c.action AND EXCLUDED.flagged_by < c.flagged_by))`
+
 // UpsertCases opens Cases for flagged Decisions or makes existing ones
 // stricter; an action is never lowered. It returns the Cases whose
-// Contributions must be (re)computed: new ones, and ones whose action rose.
+// Contributions must be (re)computed: new ones, and ones whose Decision was
+// taken over.
 func (s *Store) UpsertCases(ctx context.Context, ds []Decision) ([]CaseKey, error) {
 	// One row per Case per statement: Postgres can't update a row twice.
 	strictest := map[CaseKey]Decision{}
@@ -71,7 +78,7 @@ func (s *Store) UpsertCases(ctx context.Context, ds []Decision) ([]CaseKey, erro
 		case !seen:
 			order = append(order, k)
 			strictest[k] = d
-		case d.Action > prev.Action:
+		case d.Action > prev.Action || d.Action == prev.Action && d.Stage < prev.Stage:
 			d.ReasonCodes = append(slices.Clone(d.ReasonCodes), prev.ReasonCodes...)
 			strictest[k] = d
 		default:
@@ -105,9 +112,10 @@ func (s *Store) UpsertCases(ctx context.Context, ds []Decision) ([]CaseKey, erro
 		            $7::smallint[], $8::text[], $9::text[]) AS t(p, e, et, en, a, pr, st, rc, v)
 		ON CONFLICT (profile, event_id) DO UPDATE SET
 		    reason_codes  = ARRAY(SELECT DISTINCT x FROM unnest(c.reason_codes || EXCLUDED.reason_codes) x ORDER BY x),
-		    probability   = CASE WHEN EXCLUDED.action > c.action THEN EXCLUDED.probability ELSE c.probability END,
-		    model_version = CASE WHEN EXCLUDED.action > c.action THEN EXCLUDED.model_version ELSE c.model_version END,
-		    contributions = CASE WHEN EXCLUDED.action > c.action THEN NULL ELSE c.contributions END,
+		    probability   = CASE WHEN `+takeover+` THEN EXCLUDED.probability ELSE c.probability END,
+		    model_version = CASE WHEN `+takeover+` THEN EXCLUDED.model_version ELSE c.model_version END,
+		    contributions = CASE WHEN `+takeover+` THEN NULL ELSE c.contributions END,
+		    flagged_by    = CASE WHEN `+takeover+` THEN EXCLUDED.flagged_by ELSE c.flagged_by END,
 		    action        = GREATEST(c.action, EXCLUDED.action),
 		    updated_at    = now()
 		RETURNING profile, event_id, contributions IS NULL`,

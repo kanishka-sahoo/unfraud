@@ -164,3 +164,23 @@ func TestRingsAreCommunitiesWithEnoughFraud(t *testing.T) {
 		t.Fatalf("rings returned twice: %+v", again)
 	}
 }
+
+func TestNeighborhoodWalksCardsThroughDevices(t *testing.T) {
+	g := newGraph(t)
+	feed(t, g, event(0, "a", "d1"), event(0, "b", "d1"), event(0, "b", "d2"), event(0, "c", "d2"), fraud(1, "c"))
+	sg := g.Neighborhood(2*hour, "a", 2, 100)
+	var ids []string
+	for _, n := range sg.Nodes {
+		ids = append(ids, n.Kind+":"+n.ID)
+	}
+	if got := fmt.Sprint(ids); got != "[card:a device:d1 card:b]" {
+		t.Fatalf("2 hops from a: %s", got)
+	}
+	sg = g.Neighborhood(2*hour, "a", 4, 100)
+	if len(sg.Nodes) != 5 || len(sg.Edges) != 4 || !sg.Nodes[len(sg.Nodes)-1].Fraud {
+		t.Fatalf("4 hops from a: %+v", sg)
+	}
+	if sg = g.Neighborhood(2*hour, "a", 4, 2); !sg.Truncated || len(sg.Nodes) != 2 {
+		t.Fatalf("max nodes not enforced: %+v", sg)
+	}
+}

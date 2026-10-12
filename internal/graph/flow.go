@@ -25,6 +25,10 @@ type Flow struct {
 	in      map[int][]int
 	period  int64 // Event Time of the buffered period
 	pending []Revised
+	// history keeps every closed period's Links (both directions) and fraud
+	// marks released Labels, for the graph explorer.
+	history map[string][]string
+	fraud   map[string]bool
 }
 
 // Revised is one Event's graph features, available once its period closed.
@@ -36,7 +40,8 @@ type Revised struct {
 }
 
 func NewFlow(cfg profile.FlowConfig, schema *profile.Schema) (*Flow, error) {
-	f := &Flow{cfg: cfg, cols: []string{"flow_in", "flow_out", "flow_in2", "flow_out2"}}
+	f := &Flow{cfg: cfg, cols: []string{"flow_in", "flow_out", "flow_in2", "flow_out2"},
+		history: map[string][]string{}, fraud: map[string]bool{}}
 	for _, n := range cfg.Aggregate {
 		i, ok := schema.NumIndex(n)
 		if !ok {
@@ -60,6 +65,7 @@ func (f *Flow) Columns() []string { return f.cols }
 // Process buffers Events and Links; a Watermark at or after the buffered
 // period closes it.
 func (f *Flow) Process(env *unfraudv1.Envelope) {
+	f.observe(env)
 	switch p := env.Payload.(type) {
 	case *unfraudv1.Envelope_Event:
 		id, ok := p.Event.Entities[f.cfg.Node]
@@ -95,6 +101,8 @@ func (f *Flow) close(closed int64) {
 		if sok && dok && src != dst {
 			f.out[src] = append(f.out[src], dst)
 			f.in[dst] = append(f.in[dst], src)
+			f.history[l[0]] = append(f.history[l[0]], l[1])
+			f.history[l[1]] = append(f.history[l[1]], l[0])
 		}
 	}
 	n := len(f.ids)

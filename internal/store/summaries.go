@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -10,22 +11,23 @@ import (
 
 // Case is one row of the cases table.
 type Case struct {
-	Profile, EventID string
-	EventTime        time.Time
-	Entities         map[string]string
-	Action           int16
-	Probability      float32
-	FlaggedBy        int16
-	ReasonCodes      []string
-	Contributions    *CaseContributions
-	ModelVersion     string
-	Disposition      *string
-	DispositionNote  *string
-	DisposedAt       *time.Time
-	Summary          json.RawMessage
-	SummaryStatus    string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Profile         string             `json:"profile"`
+	EventID         string             `json:"event_id"`
+	EventTime       time.Time          `json:"event_time"`
+	Entities        map[string]string  `json:"entities"`
+	Action          int16              `json:"action"`
+	Probability     float32            `json:"probability"`
+	FlaggedBy       int16              `json:"flagged_by"`
+	ReasonCodes     []string           `json:"reason_codes"`
+	Contributions   *CaseContributions `json:"contributions"`
+	ModelVersion    string             `json:"model_version"`
+	Disposition     *string            `json:"disposition"`
+	DispositionNote *string            `json:"disposition_note"`
+	DisposedAt      *time.Time         `json:"disposed_at"`
+	Summary         json.RawMessage    `json:"summary"`
+	SummaryStatus   string             `json:"summary_status"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
 const caseColumns = `profile, event_id, event_time, entities, action, probability, flagged_by, reason_codes,
@@ -52,8 +54,12 @@ func scanCase(row pgx.Row) (Case, error) {
 
 // GetCase returns one Case.
 func (s *Store) GetCase(ctx context.Context, k CaseKey) (Case, error) {
-	return scanCase(s.Pool.QueryRow(ctx, `SELECT `+caseColumns+` FROM cases WHERE profile = $1 AND event_id = $2`,
+	c, err := scanCase(s.Pool.QueryRow(ctx, `SELECT `+caseColumns+` FROM cases WHERE profile = $1 AND event_id = $2`,
 		k.Profile, k.EventID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return c, ErrNotFound
+	}
+	return c, err
 }
 
 // ClaimSummaries marks up to n pending Cases (with Contributions, at least

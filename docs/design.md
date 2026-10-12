@@ -158,22 +158,22 @@ Latency budget (targets, to be measured): consume → Decision under 10 ms p99 i
 
 ## 9. Web app (Next.js)
 
-Next.js App Router with TypeScript. Server components fetch from `cases-api`; live views subscribe to SSE. API types are generated from the `cases-api` OpenAPI spec (Go server through oapi-codegen, client through openapi-typescript), so the UI and the API can't drift apart. There is no auth: it runs locally only, behind the cluster ingress.
+Next.js 16 (App Router, Cache Components: every page ships a static shell and streams its data behind `<Suspense>`) with TypeScript. Server components call `cases-api` inside the cluster; browser calls (live stream, dispositions, replays, graph) go through one route-handler proxy, so the browser talks to a single origin. API types are generated from `api/openapi.yaml` with openapi-typescript, and CI fails if they drift. There is no auth: the console is local-only.
+
+Visual direction: intaglio-ink navy with paper-coloured text; decisions are always an icon plus a word; the analyst memo (the LLM Summary) is set in a serif because it is prose; chart colours were validated for colour-vision deficiency against both navy surfaces.
 
 | Route | Purpose |
 |---|---|
-| `/` | **Overview**: throughput, flag rate, p99 latency, consumer lag, degraded-Decision rate, latest Ring Alerts, active Replay. |
-| `/stream` | **Live Events**: virtualized SSE feed filterable by Profile and Decision, with Provisional → Revised changes highlighted. |
-| `/cases` | **Case queue**: sort by score, amount or age; filter by Profile, type and Disposition. |
-| `/cases/[id]` | **Case detail**: Summary (Grounding badge, model and provider used), score with a Contribution waterfall, Reason Codes, Decision timeline including Revisions, Entity velocity charts, mini Ring graph, Disposition actions. |
-| `/rings` | **Ring list**: size, growth, Label density, status. |
-| `/rings/[id]` | **Ring detail**: interactive WebGL graph (Sigma.js + graphology), member table, growth over Event Time, Ring Summary. |
-| `/entities/[type]/[id]` | **Entity history**: every Event, Link and Case involving one Card UID, Device Fingerprint and so on. |
-| `/models` | **Registry**: active and Shadow Models per Profile, parity and TreeSHAP check status, metrics, Shadow-vs-active agreement, promote action. |
-| `/benchmarks` | **Results**: ablation tables, PR curves and system-run charts from `results/*.json`, with dataset hashes, hardware and git SHA. |
-| `/replay` | **Replay control**: choose Profile, mode (Accuracy Run / System Run) and speed; start/stop; progress. |
+| `/{profile}` | **Overview**: Events scored, flag rates per Stage, open Cases, Summaries, Decisions per minute (zero-filled last hour), newest Cases. |
+| `/{profile}/live` | **Live Decisions** over server-sent events (at most 20 a second per browser, with a count of the rest). |
+| `/{profile}/cases` | **Case queue**: status, strictness and order filters in the URL; entity filter. |
+| `/{profile}/cases/{id}` | **Case detail**: the Summary with its Grounding note and model, provider, latency and cost; the **risk ledger** (Contributions opening at the model's base rate and closing at the Case's probability, with a running probability per factor; masked features labelled as such); the Provisional and Revised Decisions; Entities (each a link to that Entity's Cases); Disposition. |
+| `/{profile}/graph/{node}` | **Graph explorer** (Sigma.js + ForceAtlas2): a card's shared-device neighbourhood or a transaction's payment neighbourhood, served from graph-svc's live state; released fraud marked. It replaces the planned Ring pages, since Ring Alerts are off for IEEE-CIS (§7). |
+| `/models` | Model versions in use per Profile and Stage, from the Decisions they made. |
+| `/benchmarks` | The committed `results/` (embedded in cases-api), plus Elliptic F1 per test timestep. |
+| `/replay` | Start a replay Job (cases-api creates it through the Kubernetes API with a namespaced Role) and see recent ones. |
 
-**Dispositions** are stored but never become Labels and never feed metrics or training ([ADR-0011](./adr/0011-dispositions-are-not-labels.md)). Playwright runs end-to-end tests against the kind cluster with the `stub` LLM driver.
+**Dispositions** are stored but never become Labels and never feed metrics or training ([ADR-0011](./adr/0011-dispositions-are-not-labels.md)). Playwright tests (`web/e2e`) run against the deployed console.
 
 ## 10. Benchmarking ([ADR-0006](./adr/0006-accuracy-vs-system-runs.md))
 

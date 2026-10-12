@@ -1,0 +1,286 @@
+openapi: 3.1.0
+info:
+  title: unfraud cases-api
+  version: 0.1.0
+  description: >
+    The web app's API (cmd/casesapi, internal/api). Actions are 0 approve,
+    1 review, 2 block; Stages are 1 Provisional, 2 Revised.
+paths:
+  /api/profiles:
+    get:
+      summary: Profiles that have Cases
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { type: string } } } } }
+  /api/overview/{profile}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/profile" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Overview" } } } }
+  /api/cases:
+    get:
+      parameters:
+        - { name: profile, in: query, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [open, disposed, all] } }
+        - { name: min_action, in: query, schema: { type: integer, minimum: 0, maximum: 2 } }
+        - { name: sort, in: query, schema: { type: string, enum: [score, time, recent] } }
+        - { name: entity, in: query, description: "type=id", schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200 } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CaseListItem" } } } } }
+        "400": { description: Bad filter }
+  /api/cases/{profile}/{event_id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/profile" }, { $ref: "#/components/parameters/event_id" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CaseDetail" } } } }
+        "404": { description: No such Case }
+  /api/cases/{profile}/{event_id}/disposition:
+    post:
+      description: An analyst's judgment. Dispositions never become Labels (ADR-0011).
+      parameters: [{ $ref: "#/components/parameters/profile" }, { $ref: "#/components/parameters/event_id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disposition]
+              properties:
+                disposition: { type: string, enum: [confirmed, dismissed, escalated] }
+                note: { type: string }
+      responses:
+        "200": { description: Recorded }
+        "400": { description: Invalid disposition }
+        "404": { description: No such Case }
+  /api/graph/{profile}/{node}:
+    get:
+      parameters:
+        - { $ref: "#/components/parameters/profile" }
+        - { name: node, in: path, required: true, schema: { type: string } }
+        - { name: hops, in: query, schema: { type: integer, minimum: 1, maximum: 4 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Subgraph" } } } }
+        "502": { description: graph-svc unavailable }
+  /api/models:
+    get:
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ModelUse" } } } } }
+  /api/benchmarks:
+    get:
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Benchmark" } } } } }
+  /api/stream/{profile}:
+    get:
+      description: Server-sent events, one LiveDecision per data line, at most 20 a second.
+      parameters: [{ $ref: "#/components/parameters/profile" }]
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { $ref: "#/components/schemas/LiveDecision" } } } }
+  /api/replays:
+    get:
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Replay" } } } } }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile]
+              properties:
+                profile: { type: string }
+                speed: { type: number, description: "Event Time per wall-clock time; 0 = as fast as possible" }
+                limit: { type: integer }
+      responses:
+        "200": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Replay" } } } }
+        "409": { description: A replay is already running }
+components:
+  parameters:
+    profile: { name: profile, in: path, required: true, schema: { type: string } }
+    event_id: { name: event_id, in: path, required: true, schema: { type: string } }
+  schemas:
+    Action: { type: integer, enum: [0, 1, 2] }
+    Stage: { type: integer, enum: [1, 2] }
+    Entities: { type: object, additionalProperties: { type: string } }
+    Overview:
+      type: object
+      required: [profile, decisions, cases, per_minute, recent_cases, summaries]
+      properties:
+        profile: { type: string }
+        decisions:
+          type: array
+          items:
+            type: object
+            required: [stage, action, count]
+            properties: { stage: { $ref: "#/components/schemas/Stage" }, action: { $ref: "#/components/schemas/Action" }, count: { type: integer } }
+        cases:
+          type: object
+          required: [open, open_block, confirmed, dismissed, escalated]
+          properties:
+            open: { type: integer }
+            open_block: { type: integer }
+            confirmed: { type: integer }
+            dismissed: { type: integer }
+            escalated: { type: integer }
+        per_minute:
+          type: [array, "null"]
+          items:
+            type: object
+            required: [minute, provisional, revised, flagged]
+            properties: { minute: { type: string, format: date-time }, provisional: { type: integer }, revised: { type: integer }, flagged: { type: integer } }
+        recent_cases: { type: array, items: { $ref: "#/components/schemas/CaseListItem" } }
+        summaries: { type: object, additionalProperties: { type: integer } }
+    CaseListItem:
+      type: object
+      required: [profile, event_id, event_time, entities, action, probability, flagged_by, reason_codes, disposition, summary_status, created_at]
+      properties:
+        profile: { type: string }
+        event_id: { type: string }
+        event_time: { type: string, format: date-time }
+        entities: { $ref: "#/components/schemas/Entities" }
+        action: { $ref: "#/components/schemas/Action" }
+        probability: { type: number }
+        flagged_by: { $ref: "#/components/schemas/Stage" }
+        reason_codes: { type: array, items: { type: string } }
+        disposition: { type: [string, "null"], enum: [confirmed, dismissed, escalated, null] }
+        summary_status: { type: string, enum: [pending, running, done, failed, skipped] }
+        created_at: { type: string, format: date-time }
+    Contribution:
+      type: object
+      required: [feature, shap]
+      properties:
+        feature: { type: string }
+        value: { description: "number, category, or null when missing" }
+        shap: { type: number }
+    Contributions:
+      type: [object, "null"]
+      required: [model_version, stage, bias, top, other, raw_score]
+      properties:
+        model_version: { type: string }
+        stage: { $ref: "#/components/schemas/Stage" }
+        bias: { type: number }
+        top: { type: array, items: { $ref: "#/components/schemas/Contribution" } }
+        other: { type: number }
+        raw_score: { type: number }
+    Factor:
+      type: object
+      required: [feature, description, effect]
+      properties: { feature: { type: string }, description: { type: string }, value: {}, effect: { type: number } }
+    Summary:
+      type: [object, "null"]
+      properties:
+        summary: { type: string }
+        key_points: { type: [array, "null"], items: { type: string } }
+        grounded: { type: boolean }
+        problems: { type: array, items: { type: string } }
+        attempts: { type: integer }
+        error: { type: string }
+        at: { type: string, format: date-time }
+        meta:
+          type: object
+          properties:
+            driver: { type: string }
+            model: { type: string }
+            provider: { type: string }
+            prompt_tokens: { type: integer }
+            completion_tokens: { type: integer }
+            cost_usd: { type: number }
+            latency_ms: { type: integer }
+        packet:
+          type: object
+          properties:
+            model_factors: { type: [array, "null"], items: { $ref: "#/components/schemas/Factor" } }
+            anonymized_features: { oneOf: [{ $ref: "#/components/schemas/Factor" }, { type: "null" }] }
+            rule_reasons: { type: array, items: { type: object, properties: { code: { type: string }, description: { type: string } } } }
+    Case:
+      allOf:
+        - { $ref: "#/components/schemas/CaseListItem" }
+        - type: object
+          required: [contributions, model_version, disposition_note, disposed_at, summary, updated_at]
+          properties:
+            contributions: { $ref: "#/components/schemas/Contributions" }
+            model_version: { type: string }
+            disposition_note: { type: [string, "null"] }
+            disposed_at: { type: [string, "null"], format: date-time }
+            summary: { $ref: "#/components/schemas/Summary" }
+            updated_at: { type: string, format: date-time }
+    Decision:
+      type: object
+      required: [profile, event_id, stage, event_time, probability, model_action, rule_action, action, reason_codes, model_version, scored_at, ingested_at]
+      properties:
+        profile: { type: string }
+        event_id: { type: string }
+        stage: { $ref: "#/components/schemas/Stage" }
+        event_time: { type: string, format: date-time }
+        probability: { type: number }
+        model_action: { $ref: "#/components/schemas/Action" }
+        rule_action: { $ref: "#/components/schemas/Action" }
+        action: { $ref: "#/components/schemas/Action" }
+        reason_codes: { type: array, items: { type: string } }
+        model_version: { type: string }
+        scored_at: { type: string, format: date-time }
+        ingested_at: { type: string, format: date-time }
+    CaseDetail:
+      type: object
+      required: [case, decisions]
+      properties:
+        case: { $ref: "#/components/schemas/Case" }
+        decisions: { type: array, items: { $ref: "#/components/schemas/Decision" } }
+    Subgraph:
+      type: object
+      required: [center, nodes, edges, truncated]
+      properties:
+        center: { type: string }
+        truncated: { type: boolean }
+        nodes:
+          type: array
+          items:
+            type: object
+            required: [id, kind, fraud]
+            properties:
+              id: { type: string }
+              kind: { type: string, enum: [card, device, tx] }
+              fraud: { type: boolean }
+              super_node: { type: boolean }
+              community: { type: integer }
+        edges:
+          type: array
+          items: { type: object, required: [source, target], properties: { source: { type: string }, target: { type: string } } }
+    ModelUse:
+      type: object
+      required: [profile, stage, model_version, decisions, flagged, first_scored, last_scored]
+      properties:
+        profile: { type: string }
+        stage: { $ref: "#/components/schemas/Stage" }
+        model_version: { type: string }
+        decisions: { type: integer }
+        flagged: { type: integer }
+        first_scored: { type: string, format: date-time }
+        last_scored: { type: string, format: date-time }
+    Benchmark:
+      type: object
+      required: [name, markdown]
+      properties: { name: { type: string }, markdown: { type: string }, data: {} }
+    LiveDecision:
+      type: object
+      required: [stage, event_id, event_time, action, probability, reason_codes, latency_ms, skipped]
+      properties:
+        stage: { $ref: "#/components/schemas/Stage" }
+        event_id: { type: string }
+        event_time: { type: string, format: date-time }
+        action: { $ref: "#/components/schemas/Action" }
+        probability: { type: number }
+        reason_codes: { type: [array, "null"], items: { type: string } }
+        latency_ms: { type: integer }
+        skipped: { type: integer, description: "Decisions not sent since the previous one (rate limit)" }
+    Replay:
+      type: object
+      required: [name, profile, speed, status, started_at, ended_at]
+      properties:
+        name: { type: string }
+        profile: { type: string }
+        speed: { type: number }
+        status: { type: string, enum: [running, succeeded, failed] }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: [string, "null"], format: date-time }

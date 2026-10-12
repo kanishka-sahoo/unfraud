@@ -121,6 +121,9 @@ func New(p profile.Profile, st features.State, modelDir string, cfg Config, opts
 	return s, nil
 }
 
+// Engine returns the feature engine, for graph queries.
+func (s *Scorer) Engine() *features.Engine { return s.eng }
+
 // Model returns the loaded model.
 func (s *Scorer) Model() *model.Model { return s.m }
 
