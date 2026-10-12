@@ -12,6 +12,7 @@ import (
 	"time"
 
 	unfraudv1 "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1"
+	"github.com/kanishka-sahoo/unfraud/internal/graph"
 	"github.com/kanishka-sahoo/unfraud/internal/profile"
 )
 
@@ -45,6 +46,7 @@ type Engine struct {
 	retain map[string]int64 // set key prefix -> member retention (ms)
 	// hasFraudLabels is set when some feature counts released fraud Labels.
 	hasFraudLabels bool
+	graph          *graph.Graph // optional; its columns come last
 	swept          int64
 	started        bool
 
@@ -63,8 +65,29 @@ type compiled struct {
 
 type window struct{ ms, bucket int64 }
 
+// Option configures an Engine.
+type Option func(*Engine) error
+
+// WithGraph adds the Profile's attribute-graph features, computed in-process.
+// Only a single ordered stream sees the whole graph, so this is for Accuracy
+// Runs; live scorers read graph features published by graph-svc instead.
+func WithGraph(p profile.Profile) Option {
+	return func(e *Engine) error {
+		if p.Graph == nil {
+			return nil
+		}
+		g, err := graph.New(*p.Graph)
+		if err != nil {
+			return err
+		}
+		e.graph = g
+		e.cols = append(e.cols, graph.Columns...)
+		return nil
+	}
+}
+
 // New compiles a Profile's features.
-func New(p profile.Profile, st State) (*Engine, error) {
+func New(p profile.Profile, st State, opts ...Option) (*Engine, error) {
 	e := &Engine{st: st, retain: map[string]int64{}}
 	for _, f := range p.Features {
 		if err := f.Validate(p.Schema); err != nil {
@@ -95,6 +118,11 @@ func New(p profile.Profile, st State) (*Engine, error) {
 		e.feats = append(e.feats, c)
 		e.cols = append(e.cols, f.Columns()...)
 	}
+	for _, o := range opts {
+		if err := o(e); err != nil {
+			return nil, err
+		}
+	}
 	return e, nil
 }
 
@@ -104,6 +132,14 @@ func slicesMax(ws []window) int64 {
 		m = max(m, w.ms)
 	}
 	return m
+}
+
+// Rings returns Rings found by the in-process graph since the last call.
+func (e *Engine) Rings() []graph.Ring {
+	if e.graph == nil {
+		return nil
+	}
+	return e.graph.Rings()
 }
 
 // Columns names the values Process returns, in order.
@@ -116,9 +152,18 @@ func (e *Engine) Process(ctx context.Context, env *unfraudv1.Envelope) ([]float6
 	if !e.started {
 		e.started, e.swept = true, t
 	}
+	var gv []float64
+	if e.graph != nil {
+		gv = e.graph.Process(env)
+	}
 	switch p := env.Payload.(type) {
 	case *unfraudv1.Envelope_Event:
-		return e.event(ctx, t, p.Event)
+		out, err := e.event(ctx, t, p.Event)
+		if err != nil || e.graph == nil {
+			return out, err
+		}
+		copy(out[len(out)-len(gv):], gv)
+		return out, nil
 	case *unfraudv1.Envelope_LabelRelease:
 		return nil, e.labelRelease(ctx, t, p.LabelRelease)
 	case *unfraudv1.Envelope_Watermark:

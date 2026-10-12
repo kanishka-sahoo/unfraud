@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -36,11 +37,19 @@ func run(log *slog.Logger) error {
 		modelDir    = flag.String("model", "", "trained model folder")
 		out         = flag.String("out", "", "output folder (default: the model folder)")
 		limit       = flag.Int("limit", 0, "stop after this many dataset records; 0 = all")
+		ringPolicy  = flag.String("ring-policy", "", "override the Ring policy: minNodes,minFraud,minShare")
 	)
 	flag.Parse()
 	p, err := registry.Get(*profileName)
 	if err != nil {
 		return err
+	}
+	if *ringPolicy != "" && p.Graph != nil {
+		g := *p.Graph
+		if _, err := fmt.Sscanf(*ringPolicy, "%d,%d,%g", &g.RingMinNodes, &g.RingMinFraud, &g.RingMinShare); err != nil {
+			return fmt.Errorf("-ring-policy: %w", err)
+		}
+		p.Graph = &g
 	}
 	if *out == "" {
 		*out = *modelDir
@@ -48,7 +57,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	sc, err := scoring.New(p, features.NewMemory(), *modelDir, scoring.DefaultConfig)
+	sc, err := scoring.New(p, features.NewMemory(), *modelDir, scoring.DefaultConfig, features.WithGraph(p))
 	if err != nil {
 		return err
 	}
@@ -61,7 +70,14 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	sink := &decisionSink{sc: sc, w: w}
+	rw, err := table.Create(filepath.Join(*out, "revisions.parquet"), []table.Column{
+		{Name: "event_id", Type: table.String}, {Name: "event_time_ms", Type: table.Int64},
+		{Name: "revised_at_ms", Type: table.Int64}, {Name: "ring_id", Type: table.String},
+	})
+	if err != nil {
+		return err
+	}
+	sink := &decisionSink{sc: sc, w: w, rw: rw}
 
 	dir := filepath.Join(*dataDir, p.Name)
 	events, err := p.Open(dir)
@@ -83,21 +99,35 @@ func run(log *slog.Logger) error {
 		w.Close()
 		return err
 	}
-	log.Info("accuracy run finished", "events", stats.Events, "flagged", sink.flagged,
+	log.Info("accuracy run finished", "events", stats.Events, "flagged", sink.flagged, "revisions", sink.revisions,
 		"elapsed", time.Since(start).Round(time.Millisecond).String(), "out", *out)
 	return nil
 }
 
 type decisionSink struct {
-	sc      *scoring.Scorer
-	w       *table.Writer
-	flagged int
+	sc        *scoring.Scorer
+	w, rw     *table.Writer
+	flagged   int
+	revisions int
 }
 
 func (s *decisionSink) Send(ctx context.Context, o replay.Out) error {
 	d, err := s.sc.Process(ctx, o.Env)
-	if err != nil || d == nil {
+	if err != nil {
 		return err
+	}
+	for _, r := range s.sc.Revisions() {
+		s.rw.SetString(0, r.EventID)
+		s.rw.SetInt64(1, r.EventTimeMs)
+		s.rw.SetInt64(2, r.RevisedAtMs)
+		s.rw.SetString(3, r.RingID)
+		if err := s.rw.WriteRow(); err != nil {
+			return err
+		}
+		s.revisions++
+	}
+	if d == nil {
+		return nil
 	}
 	if d.Action > 0 {
 		s.flagged++
@@ -116,4 +146,9 @@ func (s *decisionSink) Send(ctx context.Context, o replay.Out) error {
 	return s.w.WriteRow()
 }
 
-func (s *decisionSink) Flush(context.Context) error { return s.w.Close() }
+func (s *decisionSink) Flush(context.Context) error {
+	if err := s.w.Close(); err != nil {
+		return err
+	}
+	return s.rw.Close()
+}

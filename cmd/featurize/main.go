@@ -83,7 +83,7 @@ func run(log *slog.Logger) error {
 	defer stop()
 
 	state := features.NewMemory()
-	eng, err := features.New(p, state)
+	eng, err := features.New(p, state, features.WithGraph(p))
 	if err != nil {
 		return err
 	}

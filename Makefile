@@ -43,7 +43,7 @@ featurize: ## Accuracy Run to training tables: make featurize PROFILE=ieee-cis
 
 train: ## Train static and real-time models: make train PROFILE=ieee-cis
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
-	@for fs in static realtime; do \
+	@for fs in static realtime graph; do \
 	  uv run --project train unfraud-train train --features data/features/$(PROFILE) \
 	    --out models/$(PROFILE)/lgbm-$$fs --feature-set $$fs || exit 1; \
 	done

@@ -14,7 +14,7 @@ def main() -> None:
     t = sub.add_parser("train", help="train LightGBM on an Accuracy Run's tables")
     t.add_argument("--features", type=Path, required=True, help="featurize output folder")
     t.add_argument("--out", type=Path, required=True, help="model output folder")
-    t.add_argument("--feature-set", choices=["static", "realtime"], default="realtime")
+    t.add_argument("--feature-set", choices=["static", "realtime", "graph"], default="realtime")
     t.add_argument("--budget", type=float, default=0.005, help="Alert Budget (share of Events flagged)")
     t.add_argument("--max-rounds", type=int, default=3000)
     t.add_argument("--param", action="append", default=[], metavar="KEY=VALUE",

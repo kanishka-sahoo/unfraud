@@ -66,6 +66,8 @@ def prepare(features_dir: Path, feature_set: str, train_months: int = 4, val_mon
     num = list(manifest["raw_num"])
     cat = list(manifest["raw_cat"])
     if feature_set == "realtime":
+        num += [c for c in manifest["realtime"] if not c.startswith("graph_")]
+    elif feature_set == "graph":
         num += manifest["realtime"]
     elif feature_set != "static":
         raise ValueError(f"unknown feature set {feature_set!r}")

@@ -9,6 +9,7 @@ from pathlib import Path
 ROWS = [
     ("static", "Model, static features"),
     ("realtime", "+ real-time features"),
+    ("graph", "+ graph features"),
     ("realtime-uncapped", "+ real-time features, unlimited depth (reference, not served)"),
 ]
 
@@ -72,6 +73,36 @@ def system_run_section(out: Path) -> list[str]:
     return lines
 
 
+def rings_section(models: Path, features: Path | None) -> list[str]:
+    rings_dir, model_dir = models / "rings-3_2_0", models / "lgbm-graph"
+    if features is None or not (rings_dir / "revisions.parquet").exists():
+        return []
+    from .rings import evaluate_rings
+
+    lines = [
+        "",
+        "### Ring Alerts (rejected on the validation month)",
+        "",
+        "Policy: a Louvain Community with at least 3 cards, at least 2 of them with released fraud Labels. "
+        "Ring cards' later Events are flagged (`RING_MEMBER`) and their Events approved in the previous 7 days are "
+        "revised. Only Events the graph model approved count. Each row is compared with flagging the same number of "
+        "the model's highest-scoring approved Events instead.",
+        "",
+        "| Month | Mechanism | Alerts | Fraud | Precision | Model, same volume: fraud | Precision |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for split, label in (("val", "Validation"), ("test", "Test")):
+        r = evaluate_rings(rings_dir, model_dir, features, split)
+        for key, name in (("ring_flags", "Ring flags"), ("revisions", "Revisions"), ("either", "Either")):
+            a, b = r[key], r[key + "_baseline"]
+            lines.append(f"| {label} | {name} | {a['alerts']:,} | {a['fraud']:,} | {a['precision']:.1%} | "
+                         f"{b['fraud']:,} | {b['precision']:.1%} |")
+    lines += ["", "Stricter policies (fraud share ≥ 30% or 50%, or ≥ 3 fraud cards) produced at most 7 validation "
+              "alerts and no fraud. Ring Alerts are therefore off for IEEE-CIS; the graph contributes through its "
+              "features."]
+    return lines
+
+
 def report(models: Path, out: Path, features: Path | None = None) -> str:
     runs = {}
     for name, _ in ROWS:
@@ -115,6 +146,7 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
     ]
     extra, decisions = decisions_section(models, features)
     lines += extra
+    lines += rings_section(models, features)
     lines += system_run_section(out)
     table = "\n".join(lines) + "\n"
 

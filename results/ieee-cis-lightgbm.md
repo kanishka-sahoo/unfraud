@@ -6,6 +6,7 @@ Thresholds for each Alert Budget are set on the validation month and applied unc
 |---|---|---|---|---|---|---|---|---|---|
 | Model, static features | 0.5578 | 0.8970 | 13.8% | 24.9% | 42.1% | 62.8% | 57.2% | 38.8% | 2987 |
 | + real-time features | 0.6109 | 0.9272 | 13.5% | 27.6% | 45.6% | 65.8% | 61.7% | 42.5% | 237 |
+| + graph features | 0.6248 | 0.9259 | 13.4% | 27.9% | 46.1% | 66.4% | 62.8% | 42.7% | 365 |
 | + real-time features, unlimited depth (reference, not served) | 0.6187 | 0.9229 | 13.4% | 27.3% | 44.9% | 66.4% | 61.7% | 42.7% | 1414 |
 
 Recall ceilings (fraud a perfect model could catch at each budget): 0.5% → 15%, 1.0% → 28%, 2.0% → 58%, 5.0% → 100%.
@@ -31,6 +32,21 @@ The scorer blocks above the 0.5%-budget threshold (0.9784) and sends to review a
 | `FRAUD_DEVICE` | 490 | 9.8% | 48 |
 | `KNOWN_FRAUD_CARD` | 447 | 72.0% | 322 |
 | `PRIOR_FRAUD_CARD` | 1,013 | 51.2% | 519 |
+
+### Ring Alerts (rejected on the validation month)
+
+Policy: a Louvain Community with at least 3 cards, at least 2 of them with released fraud Labels. Ring cards' later Events are flagged (`RING_MEMBER`) and their Events approved in the previous 7 days are revised. Only Events the graph model approved count. Each row is compared with flagging the same number of the model's highest-scoring approved Events instead.
+
+| Month | Mechanism | Alerts | Fraud | Precision | Model, same volume: fraud | Precision |
+|---|---|---|---|---|---|---|
+| Validation | Ring flags | 785 | 61 | 7.8% | 304 | 38.7% |
+| Validation | Revisions | 3,095 | 138 | 4.5% | 664 | 21.5% |
+| Validation | Either | 3,880 | 199 | 5.1% | 732 | 18.9% |
+| Test | Ring flags | 1,164 | 81 | 7.0% | 361 | 31.0% |
+| Test | Revisions | 3,554 | 244 | 6.9% | 684 | 19.2% |
+| Test | Either | 4,718 | 325 | 6.9% | 777 | 16.5% |
+
+Stricter policies (fraud share ≥ 30% or 50%, or ≥ 3 fraud cards) produced at most 7 validation alerts and no fraud. Ring Alerts are therefore off for IEEE-CIS; the graph contributes through its features.
 
 ### System Run (in-cluster scorer, lite profile, 4-core / 8 GB machine)
 

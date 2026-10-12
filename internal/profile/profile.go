@@ -23,6 +23,8 @@ type Profile struct {
 	Features []Feature
 	// Rules are checked on every Event; they can only escalate a Decision.
 	Rules []Rule
+	// Graph, when set, adds attribute-graph features (internal/graph).
+	Graph *GraphConfig
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).
 	Open func(dataDir string) (Source, error)
 }

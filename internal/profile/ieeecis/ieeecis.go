@@ -69,7 +69,19 @@ var Profile = profile.Profile{
 	Schema:            schema,
 	Features:          features,
 	Rules:             rules,
-	Open:              open,
+	// Chosen on the training months only: devices shared by 2-20 cards carry
+	// 9-14% fraud against 3.5% overall, while email domains and addresses are
+	// almost all Super-nodes and are not used for links.
+	Graph: &profile.GraphConfig{
+		Node: CardUID, Links: []string{Device}, MaxDegree: 20,
+		Window: 30 * 24 * time.Hour, Rebuild: 24 * time.Hour, FraudRetention: 90 * 24 * time.Hour,
+		// Ring Alerts are off: on the validation month the best policy found
+		// (>=3 cards, >=2 with released fraud) flagged 3,880 model-approved
+		// Events at 5.1% precision, against 18.9% for the model's next 3,880.
+		// The graph's signal reaches the model through its graph features.
+		RingMinNodes: 0,
+	},
+	Open: open,
 }
 
 // Schema positions used to derive Entities.
