@@ -28,6 +28,10 @@ type Profile struct {
 	// Flow, when set, computes flow-graph features when a period closes,
 	// for Revisions (internal/graph.Flow).
 	Flow *FlowConfig
+	// Glossary describes raw schema features whose meaning is published.
+	// Raw features not in it are anonymized: Case Packets combine them
+	// into one model signal instead of guessing what they mean.
+	Glossary map[string]string
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).
 	Open func(dataDir string) (Source, error)
 }

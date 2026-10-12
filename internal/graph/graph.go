@@ -22,6 +22,19 @@ import (
 // Component).
 var Columns = []string{"graph_cards", "graph_links", "graph_fraud_cards", "graph_community_cards", "graph_community_fraud"}
 
+// Descriptions explains graph and flow feature columns for Case Packets.
+var Descriptions = map[string]string{
+	"graph_cards":           "cards connected to this card through shared devices (last 30 days)",
+	"graph_links":           "devices in that connected group",
+	"graph_fraud_cards":     "other cards in that group with confirmed fraud",
+	"graph_community_cards": "cards in this card's tightly linked community",
+	"graph_community_fraud": "other cards in that community with confirmed fraud",
+	"flow_in":               "payments into this transaction within its timestep",
+	"flow_out":              "payments out of this transaction within its timestep",
+	"flow_in2":              "transactions two payment hops upstream",
+	"flow_out2":             "transactions two payment hops downstream",
+}
+
 type link struct {
 	timeMs     int64
 	node, attr string

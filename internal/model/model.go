@@ -57,9 +57,9 @@ const (
 	srcRealtime
 )
 
-// Load reads a model folder (model.txt and manifest.json) and binds its
-// inputs to a Profile's Feature Schema and real-time feature columns.
-func Load(dir string, schema *profile.Schema, realtime []string) (*Model, error) {
+// LoadArtifact reads a model folder (model.txt and manifest.json) without
+// binding its inputs, for consumers that explain rather than score.
+func LoadArtifact(dir string) (*Model, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {
 		return nil, err
@@ -68,14 +68,25 @@ func Load(dir string, schema *profile.Schema, realtime []string) (*Model, error)
 	if err := json.Unmarshal(b, &m.Manifest); err != nil {
 		return nil, fmt.Errorf("%s: %w", dir, err)
 	}
-	if m.SchemaID != schema.ID {
-		return nil, fmt.Errorf("model %s was trained on schema %d, profile has %d", dir, m.SchemaID, schema.ID)
-	}
 	if m.Trees, err = lgbm.Load(filepath.Join(dir, "model.txt")); err != nil {
 		return nil, err
 	}
 	if len(m.Trees.FeatureNames) != len(m.Features) {
 		return nil, fmt.Errorf("model %s: %d tree features, manifest lists %d", dir, len(m.Trees.FeatureNames), len(m.Features))
+	}
+	return &m, nil
+}
+
+// Load reads a model folder and binds its inputs to a Profile's Feature
+// Schema and real-time feature columns.
+func Load(dir string, schema *profile.Schema, realtime []string) (*Model, error) {
+	mp, err := LoadArtifact(dir)
+	if err != nil {
+		return nil, err
+	}
+	m := *mp
+	if m.SchemaID != schema.ID {
+		return nil, fmt.Errorf("model %s was trained on schema %d, profile has %d", dir, m.SchemaID, schema.ID)
 	}
 	rt := make(map[string]int, len(realtime))
 	for i, n := range realtime {
@@ -108,6 +119,31 @@ func Load(dir string, schema *profile.Schema, realtime []string) (*Model, error)
 		}
 	}
 	return &m, nil
+}
+
+// Explain returns the Contributions behind x's score: the bias, and per
+// feature its SHAP value and its input value (the category name for
+// categorical features, nil when missing).
+func (m *Model) Explain(x []float64) (bias float64, shap []float64, values []any) {
+	phi := make([]float64, len(m.Features)+1)
+	m.Trees.Contributions(x, phi)
+	cats := map[string]bool{}
+	for _, c := range m.Categorical {
+		cats[c] = true
+	}
+	values = make([]any, len(m.Features))
+	for i, f := range m.Features {
+		switch {
+		case math.IsNaN(x[i]):
+		case cats[f]:
+			if code := int(x[i]); code >= 0 && code < len(m.Vocab[f]) {
+				values[i] = m.Vocab[f][code]
+			}
+		default:
+			values[i] = x[i]
+		}
+	}
+	return phi[len(m.Features)], phi[:len(m.Features)], values
 }
 
 // Encode writes the model input for one Event into x (len(Features)).

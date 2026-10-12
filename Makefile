@@ -8,7 +8,7 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model secrets cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -74,6 +74,11 @@ deploy-model: ## Ship a model as an image and run it: make deploy-model PROFILE=
 	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --reset-then-reuse-values --set image.tag=$(TAG) \
 	  --set-string '$(or $(SERVICE),scorer).models.$(PROFILE)=$(IMG)'
 	kubectl -n $(NAMESPACE) rollout status deploy/$(subst graph,graphsvc,$(or $(SERVICE),scorer))-$(PROFILE) --timeout=300s
+
+secrets: ## Load the OpenRouter key from ~/.config/unfraud/openrouter_key into the cluster
+	@test -s $(HOME)/.config/unfraud/openrouter_key || { echo "put your OpenRouter key in ~/.config/unfraud/openrouter_key (chmod 600)"; exit 1; }
+	kubectl -n $(NAMESPACE) create secret generic openrouter --from-file=api-key=$(HOME)/.config/unfraud/openrouter_key \
+	  --dry-run=client -o yaml | kubectl apply -f -
 
 cluster-up: ## Create the kind cluster and install operators
 	./deploy/kind/up.sh

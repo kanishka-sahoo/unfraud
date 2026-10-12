@@ -52,6 +52,33 @@ scorer:
   # Profile -> model image. A scorer runs for each entry (set by `make deploy-model`).
   models: {}
 
+postgres:
+  name: cases
+  instances: 1
+  storage: 4Gi
+  sharedBuffers: 64MB
+  resources:
+    requests: { cpu: 100m, memory: 320Mi }
+    limits: { memory: 320Mi }
+
+cases:
+  goMemLimit: 100MiB
+  resources:
+    requests: { cpu: 200m, memory: 128Mi }
+    limits: { memory: 128Mi }
+
+summarizer:
+  enabled: true
+  # stub needs no key; openrouter needs the openrouter Secret (make secrets).
+  driver: stub
+  model: anthropic/claude-haiku-4.5
+  providers: ""
+  minAction: 1
+  perMinute: 0
+  resources:
+    requests: { cpu: 50m, memory: 48Mi }
+    limits: { memory: 64Mi }
+
 graph:
   goMemLimit: 600MiB
   resources:

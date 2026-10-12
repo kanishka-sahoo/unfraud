@@ -1,0 +1,23 @@
+# Cases, Decisions and Summaries (CloudNativePG). The operator creates the
+# Secret {{ .Values.postgres.name }}-app with connection details and the
+# Service {{ .Values.postgres.name }}-rw.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.postgres.name }}
+  labels:
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+  storage:
+    size: {{ .Values.postgres.storage }}
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
+  postgresql:
+    parameters:
+      shared_buffers: {{ .Values.postgres.sharedBuffers | quote }}
+      max_connections: "40"
+  bootstrap:
+    initdb:
+      database: unfraud
+      owner: unfraud

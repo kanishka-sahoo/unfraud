@@ -69,6 +69,20 @@ var Profile = profile.Profile{
 	Schema:            schema,
 	Features:          features,
 	Rules:             rules,
+	// Kaggle documents only these columns; V, C, D, M and id_* are masked.
+	Glossary: map[string]string{
+		"TransactionAmt": "transaction amount in USD",
+		"ProductCD":      "product code of the purchase",
+		"card4":          "card network",
+		"card6":          "card type (credit or debit)",
+		"P_emaildomain":  "purchaser email domain",
+		"R_emaildomain":  "recipient email domain",
+		"addr1":          "billing region code",
+		"addr2":          "billing country code",
+		"dist1":          "a distance between addresses (units undisclosed)",
+		"DeviceType":     "device type (mobile or desktop)",
+		"DeviceInfo":     "device model or operating system string",
+	},
 	// Chosen on the training months only: devices shared by 2-20 cards carry
 	// 9-14% fraud against 3.5% overall, while email domains and addresses are
 	// almost all Super-nodes and are not used for links.

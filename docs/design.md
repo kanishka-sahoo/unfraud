@@ -148,14 +148,12 @@ Latency budget (targets, to be measured): consume → Decision under 10 ms p99 i
 
 ## 8. Cases and LLM Summaries ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md))
 
-- A **Case** is either one flagged Event or one Ring.
-- The **Case Packet** holds the Event, Decision history, Reason Codes, top Contributions, Entity history and Ring context. Anonymized IEEE-CIS `V*` columns appear only as one combined "model signal", never with guessed meanings.
-- **OpenRouter** (OpenAI-compatible) is the only LLM gateway. Model is chosen per Profile and per Case type; defaults are `anthropic/claude-haiku-4.5` for Event Cases and `anthropic/claude-sonnet-5` for Ring Cases, with an open-weights model available.
-- **Structured output:** `json_schema` where the model supports it, a tool-calling fallback otherwise, and schema validation with one repair retry in every case.
-- **Benchmark pinning:** `provider.order`, `allow_fallbacks: false`, temperature 0. Each Summary records the model and provider OpenRouter actually used.
-- A **`stub` driver** produces template Summaries, so everything runs without an API key.
-- **Grounding** check: numbers and Entities in the Summary must appear in the Case Packet. Failures are regenerated once, then dropped and counted.
-- **Published:** Grounding pass rate, a human-graded sample (accuracy, usefulness, brevity), cost per 1k Cases, and p50/p99 latency, each per model. The Summaries themselves are published as artifacts because LLM output isn't bit-reproducible.
+- **case-svc** (one per Profile) consumes `scored.<profile>` and `revised.<profile>`, stores every Decision (`decisions` table, redeliveries ignored), and opens a **Case** for each flagged Event. A Case keeps the stricter of its Provisional and Revised Decisions and is never made less strict. When a Case opens or becomes stricter, case-svc computes **Contributions** (Go TreeSHAP) with the model that flagged it, matched by model version; it holds both the scorer's and graph-svc's models.
+- The **Case Packet** (`internal/cases`) holds the Decision, rule Reason Codes with descriptions, Entities, and the strongest model factors with plain-language descriptions generated from each feature's declaration. Masked columns (IEEE-CIS V/C/D/M/id_*, Elliptic local_*) are combined into one "anonymized features" effect and never described individually.
+- The **summarizer** claims Cases from a Postgres queue (`FOR UPDATE SKIP LOCKED`, strictest and highest-scoring first, optional rate limit), which is simpler than a Kafka topic for a few thousand Cases and survives restarts (stale claims are requeued).
+- **Drivers**: `stub` (deterministic template, no key, grounded by construction) and `openrouter` (OpenAI-compatible API, `json_schema` output, temperature 0, optional provider pinning with fallbacks off, retries on 429/5xx; the model, provider, tokens and cost OpenRouter reports are stored with each Summary).
+- **Grounding** (`cases.Ground`): every number in a Summary must be a rounding of a Packet value or a percentage of one (whole numbers up to 10 are allowed for counting words), and every identifier-like token must appear verbatim. An ungrounded Summary is retried once, then stored as `failed` and never shown.
+- **Published** by `scripts/summary-report.sh`: Grounding pass rate, retries, errors, p50/p99 latency and cost per 1k Cases per model, plus a random sample for human grading.
 - The LLM never affects a Decision and is never in the scoring path.
 
 ## 9. Web app (Next.js)

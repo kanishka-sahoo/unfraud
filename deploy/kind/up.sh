@@ -19,3 +19,10 @@ helm upgrade --install strimzi oci://quay.io/strimzi-helm/strimzi-kafka-operator
   --namespace strimzi-system --create-namespace \
   --set 'watchNamespaces={unfraud}' \
   --wait
+
+cnpg_version=0.29.1 # CloudNativePG 1.30
+helm upgrade --install cnpg oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg \
+  --version "$cnpg_version" \
+  --namespace cnpg-system --create-namespace \
+  --set resources.requests.memory=96Mi --set resources.limits.memory=192Mi \
+  --wait

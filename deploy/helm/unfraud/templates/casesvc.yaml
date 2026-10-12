@@ -1,0 +1,78 @@
+{{- $profiles := dict }}
+{{- range $p, $_ := .Values.scorer.models }}{{ $_ := set $profiles $p true }}{{ end }}
+{{- range $p, $_ := .Values.graph.models }}{{ $_ := set $profiles $p true }}{{ end }}
+{{- range $profile, $_ := $profiles }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: casesvc-{{ $profile }}
+  labels:
+    app.kubernetes.io/name: casesvc
+    unfraud.dev/profile: {{ $profile }}
+    {{- include "unfraud.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: casesvc
+      unfraud.dev/profile: {{ $profile }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: casesvc
+        unfraud.dev/profile: {{ $profile }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      # Contributions need every model that can flag a Case: copy the
+      # scorer's and graph-svc's model images side by side.
+      initContainers:
+        {{- range $stage, $models := dict "provisional" $.Values.scorer.models "revised" $.Values.graph.models }}
+        {{- with index $models $profile }}
+        - name: model-{{ $stage }}
+          image: {{ . }}
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "mkdir -p /out/{{ $stage }} && cp /model/* /out/{{ $stage }}/"]
+          volumeMounts:
+            - name: models
+              mountPath: /out
+          resources:
+            limits: { memory: 32Mi }
+        {{- end }}
+        {{- end }}
+      containers:
+        - name: casesvc
+          image: {{ $.Values.image.repository }}/casesvc:{{ $.Values.image.tag }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - -profile={{ $profile }}
+            - -brokers={{ include "unfraud.bootstrap" $ }}
+            - -models=/models
+          env:
+            - name: PG_URL
+              valueFrom:
+                secretKeyRef: { name: {{ $.Values.postgres.name }}-app, key: uri }
+            - name: GOMEMLIMIT
+              value: {{ $.Values.cases.goMemLimit | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml $.Values.cases.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+      volumes:
+        - name: models
+          emptyDir: { sizeLimit: 64Mi }
+{{- end }}
