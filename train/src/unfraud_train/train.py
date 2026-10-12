@@ -12,7 +12,7 @@ import numpy as np
 import polars as pl
 
 from .data import prepare
-from .metrics import at_budgets, evaluate, threshold_for_budget
+from .metrics import at_budgets, evaluate, f1_report, threshold_for_budget
 
 PARAMS = {
     "objective": "binary",
@@ -67,6 +67,10 @@ def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_ro
     pl.DataFrame({"event_id": va.event_id, "score": val_scores}).write_parquet(out / "val_predictions.parquet")
 
     manifest = json.loads((features_dir / "manifest.json").read_text())
+    groups = None
+    if manifest["profile"] == "elliptic":
+        ts = pl.read_parquet(features_dir / "features.parquet", columns=["event_id", "timestep"])
+        groups = pl.DataFrame({"event_id": te.event_id}).join(ts, on="event_id", how="left")["timestep"].to_numpy()
     report = {
         "profile": manifest["profile"],
         "feature_set": feature_set,
@@ -85,6 +89,7 @@ def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_ro
         "validation": evaluate(va.y, val_scores, threshold, va.amount),
         "test": evaluate(te.y, test_scores, threshold, te.amount),
         "test_budgets": at_budgets(val_scores, te.y, test_scores, te.amount),
+        "test_f1": f1_report(va.y, val_scores, te.y, test_scores, groups),
         "features_sha256": data.features_sha256,
         "featurize_revision": manifest["git_revision"],
         "train_revision": git_revision(),

@@ -14,7 +14,8 @@ def main() -> None:
     t = sub.add_parser("train", help="train LightGBM on an Accuracy Run's tables")
     t.add_argument("--features", type=Path, required=True, help="featurize output folder")
     t.add_argument("--out", type=Path, required=True, help="model output folder")
-    t.add_argument("--feature-set", choices=["static", "realtime", "graph"], default="realtime")
+    t.add_argument("--feature-set", default="realtime",
+                   help="static, realtime or graph (IEEE-CIS); local, flow or dataset_agg (Elliptic)")
     t.add_argument("--budget", type=float, default=0.005, help="Alert Budget (share of Events flagged)")
     t.add_argument("--max-rounds", type=int, default=3000)
     t.add_argument("--param", action="append", default=[], metavar="KEY=VALUE",
@@ -39,6 +40,11 @@ def main() -> None:
         report = train(args.features, args.out, args.feature_set, args.budget, args.max_rounds, overrides)
         print(json.dumps({k: report[k] for k in ("feature_set", "best_iteration", "test")}, indent=2))
     elif args.cmd == "report":
+        if args.models.name == "elliptic":
+            from .elliptic import report as elliptic_report
+
+            print(elliptic_report(args.models, args.out))
+            return
         from .report import report
 
         print(report(args.models, args.out, args.features))

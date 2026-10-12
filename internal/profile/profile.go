@@ -25,6 +25,9 @@ type Profile struct {
 	Rules []Rule
 	// Graph, when set, adds attribute-graph features (internal/graph).
 	Graph *GraphConfig
+	// Flow, when set, computes flow-graph features when a period closes,
+	// for Revisions (internal/graph.Flow).
+	Flow *FlowConfig
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).
 	Open func(dataDir string) (Source, error)
 }

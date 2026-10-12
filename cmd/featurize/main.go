@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -33,11 +34,14 @@ import (
 // Manifest describes a features table. The training CLI reads it to tell raw
 // columns from real-time ones.
 type Manifest struct {
-	Profile      string    `json:"profile"`
-	SchemaID     uint32    `json:"schema_id"`
-	RawNum       []string  `json:"raw_num"`
-	RawCat       []string  `json:"raw_cat"`
-	Realtime     []string  `json:"realtime"`
+	Profile  string   `json:"profile"`
+	SchemaID uint32   `json:"schema_id"`
+	RawNum   []string `json:"raw_num"`
+	RawCat   []string `json:"raw_cat"`
+	Realtime []string `json:"realtime"`
+	// Flow names the columns of revised.parquet: flow-graph features known
+	// once an Event's period closed (Revisions), empty without a flow graph.
+	Flow         []string  `json:"flow,omitempty"`
 	LabelDelay   string    `json:"label_delay"`
 	Events       int       `json:"events"`
 	Labels       int       `json:"labels"`
@@ -83,7 +87,7 @@ func run(log *slog.Logger) error {
 	defer stop()
 
 	state := features.NewMemory()
-	eng, err := features.New(p, state, features.WithGraph(p))
+	eng, err := features.New(p, state, features.WithGraph(p), features.WithFlow(p))
 	if err != nil {
 		return err
 	}
@@ -121,7 +125,7 @@ func run(log *slog.Logger) error {
 
 	m := Manifest{
 		Profile: p.Name, SchemaID: p.Schema.ID, RawNum: p.Schema.Num, RawCat: p.Schema.Cat,
-		Realtime: eng.Columns(), LabelDelay: p.LabelDelay.String(),
+		Realtime: eng.Columns(), Flow: eng.FlowColumns(), LabelDelay: p.LabelDelay.String(),
 		Events: stats.Events, Labels: sink.labels, FirstEventMs: sink.firstMs, LastEventMs: sink.lastMs,
 		GitRevision: revision(), CreatedAt: time.Now().UTC(),
 	}
@@ -142,6 +146,7 @@ type sink struct {
 	eng             *features.Engine
 	schema          *profile.Schema
 	feats, labelsW  *table.Writer
+	revisedW        *table.Writer // nil without a flow graph
 	nNum, nCat      int
 	labels          int
 	firstMs, lastMs int64
@@ -171,13 +176,40 @@ func newSink(dir string, p profile.Profile, eng *features.Engine) (*sink, error)
 		feats.Close()
 		return nil, err
 	}
-	return &sink{eng: eng, schema: p.Schema, feats: feats, labelsW: labels, nNum: len(p.Schema.Num), nCat: len(p.Schema.Cat)}, nil
+	s := &sink{eng: eng, schema: p.Schema, feats: feats, labelsW: labels, nNum: len(p.Schema.Num), nCat: len(p.Schema.Cat)}
+	if fc := eng.FlowColumns(); fc != nil {
+		cols := []table.Column{{Name: "event_id", Type: table.String}, {Name: "period_ms", Type: table.Int64},
+			{Name: "closed_ms", Type: table.Int64}}
+		for _, n := range fc {
+			cols = append(cols, table.Column{Name: n, Type: table.Float32})
+		}
+		if s.revisedW, err = table.Create(filepath.Join(dir, "revised.parquet"), cols); err != nil {
+			feats.Close()
+			labels.Close()
+			return nil, err
+		}
+	}
+	return s, nil
 }
 
 func (s *sink) Send(ctx context.Context, o replay.Out) error {
 	rt, err := s.eng.Process(ctx, o.Env)
 	if err != nil {
 		return err
+	}
+	for _, r := range s.eng.Revised() {
+		w := s.revisedW
+		w.SetString(0, r.EventID)
+		w.SetInt64(1, r.PeriodMs)
+		w.SetInt64(2, r.ClosedMs)
+		for i, v := range r.Values {
+			if !math.IsNaN(v) {
+				w.SetFloat32(3+i, float32(v))
+			}
+		}
+		if err := w.WriteRow(); err != nil {
+			return err
+		}
 	}
 	switch p := o.Env.Payload.(type) {
 	case *unfraudv1.Envelope_Event:
@@ -230,12 +262,11 @@ func (s *sink) writeEvent(t int64, ev *unfraudv1.Event, rt []float64) error {
 func (s *sink) Flush(context.Context) error { return s.close() }
 
 func (s *sink) close() error {
-	err1 := s.feats.Close()
-	err2 := s.labelsW.Close()
-	if err1 != nil {
-		return err1
+	errs := []error{s.feats.Close(), s.labelsW.Close()}
+	if s.revisedW != nil {
+		errs = append(errs, s.revisedW.Close())
 	}
-	return err2
+	return errors.Join(errs...)
 }
 
 func revision() string {

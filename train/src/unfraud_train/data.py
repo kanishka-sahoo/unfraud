@@ -60,24 +60,56 @@ def build_vocab(values: pl.Series) -> list[str]:
     return counts[values.name].head(MAX_VOCAB).to_list()
 
 
-def prepare(features_dir: Path, feature_set: str, train_months: int = 4, val_months: int = 1,
-            amount_column: str | None = "TransactionAmt") -> Prepared:
+def feature_columns(manifest: dict, feature_set: str) -> tuple[list[str], list[str]]:
+    """Numeric and categorical columns of a feature set, per profile."""
+    raw_num, raw_cat, rt = manifest["raw_num"], manifest["raw_cat"], manifest["realtime"]
+    if manifest["profile"] == "elliptic":
+        local = [c for c in raw_num if c.startswith("local_")]
+        sets = {
+            "local": local,
+            "flow": local + manifest.get("flow", []),
+            "dataset_agg": local + [c for c in raw_num if c.startswith("agg_")],
+        }
+        if feature_set not in sets:
+            raise ValueError(f"elliptic feature sets are {list(sets)}, not {feature_set!r}")
+        return sets[feature_set], []
+    sets = {
+        "static": raw_num,
+        "realtime": raw_num + [c for c in rt if not c.startswith("graph_")],
+        "graph": raw_num + rt,
+    }
+    if feature_set not in sets:
+        raise ValueError(f"feature sets are {list(sets)}, not {feature_set!r}")
+    return sets[feature_set], raw_cat
+
+
+def assign_splits(manifest: dict, features_dir: Path, ids: pl.DataFrame) -> pl.Series:
+    """Event Time splits: IEEE-CIS by calendar month (4 train, 1 validation,
+    the rest test); Elliptic by timestep (1-29 train, 30-34 validation, 35-49
+    test, so the test period matches Weber et al. 2019)."""
+    if manifest["profile"] == "elliptic":
+        ts = pl.read_parquet(features_dir / "features.parquet", columns=["timestep"])["timestep"].to_numpy()[ids["row"].to_numpy()]
+        ts = pl.Series(ts)
+        return (pl.when(ts <= 29).then(pl.lit("train")).when(ts <= 34).then(pl.lit("val")).otherwise(pl.lit("test")))
+    return month_splits(ids["event_time_ms"], 4, 1)
+
+
+def prepare(features_dir: Path, feature_set: str) -> Prepared:
     manifest = json.loads((features_dir / "manifest.json").read_text())
-    num = list(manifest["raw_num"])
-    cat = list(manifest["raw_cat"])
-    if feature_set == "realtime":
-        num += [c for c in manifest["realtime"] if not c.startswith("graph_")]
-    elif feature_set == "graph":
-        num += manifest["realtime"]
-    elif feature_set != "static":
-        raise ValueError(f"unknown feature set {feature_set!r}")
+    num, cat = feature_columns(manifest, feature_set)
+    flow = set(manifest.get("flow", []))
 
     path = features_dir / "features.parquet"
-    ids = pl.read_parquet(path, columns=["event_id", "event_time_ms"])
+    all_ids = pl.read_parquet(path, columns=["event_id", "event_time_ms"]).with_row_index("row")
     labels = pl.read_parquet(features_dir / "labels.parquet", columns=["event_id", "label"])
-    ids = ids.with_row_index("row").join(labels, on="event_id", how="inner").sort("row")
-    split = month_splits(ids["event_time_ms"], train_months, val_months)
-    ids = ids.with_columns(split.alias("split"))
+    ids = all_ids.join(labels, on="event_id", how="inner").sort("row")
+    ids = ids.with_columns(pl.Series("split", pl.select(assign_splits(manifest, features_dir, ids)).to_series()))
+
+    def column(c: str) -> pl.Series:
+        if c in flow:
+            rev = pl.read_parquet(features_dir / "revised.parquet", columns=["event_id", c])
+            return all_ids.join(rev, on="event_id", how="left").sort("row")[c]
+        return pl.read_parquet(path, columns=[c])[c]
 
     rows = {s: ids.filter(pl.col("split") == s)["row"].to_numpy() for s in ("train", "val", "test")}
     columns = num + cat
@@ -85,12 +117,12 @@ def prepare(features_dir: Path, feature_set: str, train_months: int = 4, val_mon
 
     # Fill matrices a column at a time so the whole table is never in memory.
     for j, c in enumerate(num):
-        col = pl.read_parquet(path, columns=[c])[c].cast(pl.Float32).to_numpy()
+        col = column(c).cast(pl.Float32).to_numpy()
         for s, r in rows.items():
             mats[s][:, j] = col[r]
     vocab: dict[str, list[str]] = {}
     for k, c in enumerate(cat):
-        col = pl.read_parquet(path, columns=[c])[c]
+        col = column(c)
         vocab[c] = build_vocab(col.gather(rows["train"]))
         codes = col.replace_strict({v: i for i, v in enumerate(vocab[c])}, default=None,
                                    return_dtype=pl.Float32).fill_null(np.nan).to_numpy()
@@ -98,8 +130,8 @@ def prepare(features_dir: Path, feature_set: str, train_months: int = 4, val_mon
             mats[s][:, len(num) + k] = codes[r]
 
     amount = None
-    if amount_column:
-        amount = pl.read_parquet(path, columns=[amount_column])[amount_column].to_numpy()
+    if "TransactionAmt" in manifest["raw_num"]:
+        amount = column("TransactionAmt").to_numpy()
 
     splits = {}
     for s, r in rows.items():

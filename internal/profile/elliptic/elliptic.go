@@ -50,7 +50,11 @@ var Profile = profile.Profile{
 	LabelDelay:        5 * stepDuration,
 	WatermarkInterval: stepDuration,
 	Schema:            schema,
-	Open:              open,
+	// Revisions use the payment flows within each timestep. The local
+	// features are averaged over neighbours online, which is what the
+	// dataset's 72 precomputed aggregated features also do offline.
+	Flow: &profile.FlowConfig{Node: entityType, Aggregate: schema.Num[1 : 1+localCount]},
+	Open: open,
 }
 
 type source struct {

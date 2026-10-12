@@ -22,3 +22,12 @@ type GraphConfig struct {
 	RingMinNodes, RingMinFraud int
 	RingMinShare               float64
 }
+
+// FlowConfig describes a dataset-supplied flow graph (Elliptic): Events are
+// Nodes and Links are payments between them, complete only when a period
+// closes. Aggregate lists numeric features averaged over each Node's
+// neighbours.
+type FlowConfig struct {
+	Node      string
+	Aggregate []string
+}
