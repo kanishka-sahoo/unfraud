@@ -28,7 +28,13 @@ var Profile = profile.Profile{
 	LabelDelay:        7 * 24 * time.Hour,
 	WatermarkInterval: time.Hour,
 	Schema:            schema,
-	Open:              open,
+	// Origin accounts almost never repeat, so only destinations carry history.
+	Features: []profile.Feature{
+		{Name: "dest_count", Kind: profile.Count, Entity: "dest", Windows: []time.Duration{time.Hour, 24 * time.Hour}},
+		{Name: "dest_amount", Kind: profile.Sum, Entity: "dest", Field: "amount", Windows: []time.Duration{time.Hour, 24 * time.Hour}},
+		{Name: "dest_origins", Kind: profile.Distinct, Entity: "dest", Of: "orig", Windows: []time.Duration{24 * time.Hour}},
+	},
+	Open: open,
 }
 
 const file = "PS_20174392719_1491204439457_log.csv"

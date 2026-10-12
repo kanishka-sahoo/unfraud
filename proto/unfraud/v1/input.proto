@@ -68,4 +68,7 @@ message LabelRelease {
   Label label = 2;
   // Event Time of the labelled Event.
   int64 labelled_event_time_ms = 3;
+  // The labelled Event's Entities, so consumers can attribute the Label
+  // without remembering every Event for the length of the label delay.
+  map<string, string> entities = 4;
 }

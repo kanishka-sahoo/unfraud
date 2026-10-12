@@ -443,8 +443,11 @@ type LabelRelease struct {
 	Label   Label                  `protobuf:"varint,2,opt,name=label,proto3,enum=unfraud.v1.Label" json:"label,omitempty"`
 	// Event Time of the labelled Event.
 	LabelledEventTimeMs int64 `protobuf:"varint,3,opt,name=labelled_event_time_ms,json=labelledEventTimeMs,proto3" json:"labelled_event_time_ms,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// The labelled Event's Entities, so consumers can attribute the Label
+	// without remembering every Event for the length of the label delay.
+	Entities      map[string]string `protobuf:"bytes,4,rep,name=entities,proto3" json:"entities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LabelRelease) Reset() {
@@ -498,6 +501,13 @@ func (x *LabelRelease) GetLabelledEventTimeMs() int64 {
 	return 0
 }
 
+func (x *LabelRelease) GetEntities() map[string]string {
+	if x != nil {
+		return x.Entities
+	}
+	return nil
+}
+
 var File_unfraud_v1_input_proto protoreflect.FileDescriptor
 
 const file_unfraud_v1_input_proto_rawDesc = "" +
@@ -528,11 +538,15 @@ const file_unfraud_v1_input_proto_rawDesc = "" +
 	"\x04Link\x12'\n" +
 	"\x03src\x18\x01 \x01(\v2\x15.unfraud.v1.EntityRefR\x03src\x12'\n" +
 	"\x03dst\x18\x02 \x01(\v2\x15.unfraud.v1.EntityRefR\x03dst\"\v\n" +
-	"\tWatermark\"\x87\x01\n" +
+	"\tWatermark\"\x88\x02\n" +
 	"\fLabelRelease\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12'\n" +
 	"\x05label\x18\x02 \x01(\x0e2\x11.unfraud.v1.LabelR\x05label\x123\n" +
-	"\x16labelled_event_time_ms\x18\x03 \x01(\x03R\x13labelledEventTimeMs*@\n" +
+	"\x16labelled_event_time_ms\x18\x03 \x01(\x03R\x13labelledEventTimeMs\x12B\n" +
+	"\bentities\x18\x04 \x03(\v2&.unfraud.v1.LabelRelease.EntitiesEntryR\bentities\x1a;\n" +
+	"\rEntitiesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*@\n" +
 	"\x05Label\x12\x15\n" +
 	"\x11LABEL_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vLABEL_FRAUD\x10\x01\x12\x0f\n" +
@@ -551,7 +565,7 @@ func file_unfraud_v1_input_proto_rawDescGZIP() []byte {
 }
 
 var file_unfraud_v1_input_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_unfraud_v1_input_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_unfraud_v1_input_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_unfraud_v1_input_proto_goTypes = []any{
 	(Label)(0),           // 0: unfraud.v1.Label
 	(*Envelope)(nil),     // 1: unfraud.v1.Envelope
@@ -561,6 +575,7 @@ var file_unfraud_v1_input_proto_goTypes = []any{
 	(*Watermark)(nil),    // 5: unfraud.v1.Watermark
 	(*LabelRelease)(nil), // 6: unfraud.v1.LabelRelease
 	nil,                  // 7: unfraud.v1.Event.EntitiesEntry
+	nil,                  // 8: unfraud.v1.LabelRelease.EntitiesEntry
 }
 var file_unfraud_v1_input_proto_depIdxs = []int32{
 	2, // 0: unfraud.v1.Envelope.event:type_name -> unfraud.v1.Event
@@ -571,11 +586,12 @@ var file_unfraud_v1_input_proto_depIdxs = []int32{
 	3, // 5: unfraud.v1.Link.src:type_name -> unfraud.v1.EntityRef
 	3, // 6: unfraud.v1.Link.dst:type_name -> unfraud.v1.EntityRef
 	0, // 7: unfraud.v1.LabelRelease.label:type_name -> unfraud.v1.Label
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	8, // 8: unfraud.v1.LabelRelease.entities:type_name -> unfraud.v1.LabelRelease.EntitiesEntry
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_unfraud_v1_input_proto_init() }
@@ -595,7 +611,7 @@ func file_unfraud_v1_input_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_unfraud_v1_input_proto_rawDesc), len(file_unfraud_v1_input_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

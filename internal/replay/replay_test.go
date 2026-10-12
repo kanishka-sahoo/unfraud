@@ -103,8 +103,15 @@ func TestLabelReleasesTrailEventsByDelay(t *testing.T) {
 		t.Fatalf("stats %+v", stats)
 	}
 	for _, o := range out {
-		if lr := o.Env.GetLabelRelease(); lr != nil && o.Key != "k"+lr.EventId {
+		lr := o.Env.GetLabelRelease()
+		if lr == nil {
+			continue
+		}
+		if o.Key != "k"+lr.EventId {
 			t.Fatalf("release for %s keyed %q, want the Event's key", lr.EventId, o.Key)
+		}
+		if lr.Entities["k"] != o.Key {
+			t.Fatalf("release for %s carries entities %v, want the Event's", lr.EventId, lr.Entities)
 		}
 	}
 }

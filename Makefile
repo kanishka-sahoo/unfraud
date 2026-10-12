@@ -8,7 +8,7 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic build images cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -36,6 +36,25 @@ reset-topic: ## Delete and recreate a Profile's input topic: make reset-topic PR
 	kubectl -n $(NAMESPACE) delete kafkatopic input.$(PROFILE) --wait
 	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) --reuse-values
 	kubectl -n $(NAMESPACE) wait kafkatopic/input.$(PROFILE) --for=condition=Ready --timeout=120s
+
+featurize: ## Accuracy Run to training tables: make featurize PROFILE=ieee-cis
+	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
+	go run ./cmd/featurize -profile $(PROFILE)
+
+train: ## Train static and real-time models: make train PROFILE=ieee-cis
+	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
+	@for fs in static realtime; do \
+	  uv run --project train unfraud-train train --features data/features/$(PROFILE) \
+	    --out models/$(PROFILE)/lgbm-$$fs --feature-set $$fs || exit 1; \
+	done
+
+parity: ## Check Go scores match Python on the test month: make parity PROFILE=ieee-cis [SET=realtime]
+	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
+	UNFRAUD_PARITY_MODEL=models/$(PROFILE)/lgbm-$(or $(SET),realtime) UNFRAUD_PARITY_FEATURES=data/features/$(PROFILE) \
+	  go test -count=1 -run TestParityWithPython -v ./internal/model/
+
+fixtures: ## Regenerate the Go evaluator's LightGBM fixtures
+	uv run --project train unfraud-train fixture --out internal/model/lgbm/testdata
 
 build: ## Build all commands into bin/
 	go build -o bin/ ./cmd/...

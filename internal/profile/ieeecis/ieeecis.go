@@ -67,6 +67,7 @@ var Profile = profile.Profile{
 	LabelDelay:        30 * 24 * time.Hour,
 	WatermarkInterval: time.Hour,
 	Schema:            schema,
+	Features:          features,
 	Open:              open,
 }
 

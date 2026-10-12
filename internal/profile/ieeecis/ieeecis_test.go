@@ -94,14 +94,14 @@ func TestUnknownColumnFails(t *testing.T) {
 	}
 }
 
-type features struct {
+type presentFeatures struct {
 	num map[string]float64
 	cat map[string]string
 }
 
 // present returns the non-missing features by name.
-func present(ev *unfraudv1.Event) features {
-	f := features{num: map[string]float64{}, cat: map[string]string{}}
+func present(ev *unfraudv1.Event) presentFeatures {
+	f := presentFeatures{num: map[string]float64{}, cat: map[string]string{}}
 	for i, v := range ev.Num {
 		if !math.IsNaN(v) {
 			f.num[schema.Num[i]] = v

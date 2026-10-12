@@ -1,0 +1,202 @@
+{
+  "profile": "ieee-cis",
+  "machine": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "python": "3.12.14"
+  },
+  "runs": {
+    "static": {
+      "feature_set": "static",
+      "best_iteration": 2541,
+      "alert_budget": 0.005,
+      "threshold": 0.9980735111290541,
+      "label_delay": "720h0m0s",
+      "split": {
+        "train": {
+          "events": 417559,
+          "fraud": 14721
+        },
+        "val": {
+          "events": 83655,
+          "fraud": 2828
+        },
+        "test": {
+          "events": 89326,
+          "fraud": 3114
+        }
+      },
+      "validation": {
+        "events": 83655,
+        "fraud": 2828,
+        "pr_auc": 0.6363031724319319,
+        "roc_auc": 0.9217979994606322,
+        "alert_rate": 0.005008666547128085,
+        "recall": 0.14214992927864215,
+        "precision": 0.9594272076372315,
+        "dollar_recall": 0.1048380509018898
+      },
+      "test": {
+        "events": 89326,
+        "fraud": 3114,
+        "pr_auc": 0.5545370759416695,
+        "roc_auc": 0.8981727460925064,
+        "alert_rate": 0.005216846159013053,
+        "recall": 0.14001284521515736,
+        "precision": 0.9356223175965666,
+        "dollar_recall": 0.08683377504348755
+      },
+      "test_budgets": {
+        "0.005": {
+          "threshold": 0.9980735111290541,
+          "alert_rate": 0.005216846159013053,
+          "recall": 0.14001284521515736,
+          "precision": 0.9356223175965666,
+          "recall_ceiling": 0.14964675658317278,
+          "dollar_recall": 0.08683377504348755
+        },
+        "0.01": {
+          "threshold": 0.9222741021070758,
+          "alert_rate": 0.009806775183037414,
+          "recall": 0.2524084778420039,
+          "precision": 0.8972602739726028,
+          "recall_ceiling": 0.2813102119460501,
+          "dollar_recall": 0.16019751131534576
+        },
+        "0.02": {
+          "threshold": 0.14574733337263088,
+          "alert_rate": 0.020117323063833598,
+          "recall": 0.41843288375080284,
+          "precision": 0.7250973845297718,
+          "recall_ceiling": 0.5770712909441233,
+          "dollar_recall": 0.31908392906188965
+        },
+        "0.05": {
+          "threshold": 0.004363127385742681,
+          "alert_rate": 0.05646732194433871,
+          "recall": 0.6178548490687219,
+          "precision": 0.38144329896907214,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.5926458239555359
+        }
+      },
+      "features_sha256": "346314430ad79ad8ba78c298653d2e9cd1ee0dce660dac1358ae957f17852071",
+      "featurize_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
+      "train_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    },
+    "realtime": {
+      "feature_set": "realtime",
+      "best_iteration": 1414,
+      "alert_budget": 0.005,
+      "threshold": 0.9992257552373494,
+      "label_delay": "720h0m0s",
+      "split": {
+        "train": {
+          "events": 417559,
+          "fraud": 14721
+        },
+        "val": {
+          "events": 83655,
+          "fraud": 2828
+        },
+        "test": {
+          "events": 89326,
+          "fraud": 3114
+        }
+      },
+      "validation": {
+        "events": 83655,
+        "fraud": 2828,
+        "pr_auc": 0.6928655893336605,
+        "roc_auc": 0.9423990084187877,
+        "alert_rate": 0.005008666547128085,
+        "recall": 0.14603960396039603,
+        "precision": 0.9856801909307876,
+        "dollar_recall": 0.1109529361128807
+      },
+      "test": {
+        "events": 89326,
+        "fraud": 3114,
+        "pr_auc": 0.6186875082302533,
+        "roc_auc": 0.9228842450214808,
+        "alert_rate": 0.004858607796162371,
+        "recall": 0.13391136801541426,
+        "precision": 0.9608294930875576,
+        "dollar_recall": 0.08831235766410828
+      },
+      "test_budgets": {
+        "0.005": {
+          "threshold": 0.9992257552373494,
+          "alert_rate": 0.004858607796162371,
+          "recall": 0.13391136801541426,
+          "precision": 0.9608294930875576,
+          "recall_ceiling": 0.13937058445728967,
+          "dollar_recall": 0.08831235766410828
+        },
+        "0.01": {
+          "threshold": 0.9863215098260807,
+          "alert_rate": 0.010198598392405347,
+          "recall": 0.2729608220937701,
+          "precision": 0.9330406147091108,
+          "recall_ceiling": 0.29254977520873476,
+          "dollar_recall": 0.20423278212547302
+        },
+        "0.02": {
+          "threshold": 0.4141240080788915,
+          "alert_rate": 0.019591160468396658,
+          "recall": 0.44861913937058445,
+          "precision": 0.7982857142857143,
+          "recall_ceiling": 0.5619781631342325,
+          "dollar_recall": 0.3386172652244568
+        },
+        "0.05": {
+          "threshold": 0.01071724345763069,
+          "alert_rate": 0.05421713722768287,
+          "recall": 0.6637764932562621,
+          "precision": 0.4268015692752426,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.6174739003181458
+        }
+      },
+      "features_sha256": "346314430ad79ad8ba78c298653d2e9cd1ee0dce660dac1358ae957f17852071",
+      "featurize_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
+      "train_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    }
+  }
+}

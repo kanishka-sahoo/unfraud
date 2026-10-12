@@ -150,7 +150,7 @@ func (r *runner) releaseUntil(ctx context.Context, t int64) error {
 			Profile:     r.profile,
 			EventTimeMs: rel.releaseMs,
 			Payload: &unfraudv1.Envelope_LabelRelease{LabelRelease: &unfraudv1.LabelRelease{
-				EventId: rel.eventID, Label: rel.label, LabelledEventTimeMs: rel.eventMs,
+				EventId: rel.eventID, Label: rel.label, LabelledEventTimeMs: rel.eventMs, Entities: rel.entities,
 			}},
 		}
 		if err := r.emit(ctx, Out{Env: env, Key: rel.key}); err != nil {
@@ -245,6 +245,7 @@ type release struct {
 	releaseMs, eventMs int64
 	key, eventID       string
 	label              unfraudv1.Label
+	entities           map[string]string
 }
 
 // labelCursor walks a second Source over the dataset and yields the Label
@@ -286,6 +287,7 @@ func (c *labelCursor) peek(limit int) (release, bool, error) {
 			releaseMs: t + c.delayMs, eventMs: t,
 			// Clone so the release doesn't pin the CSV line it was sliced from.
 			key: strings.Clone(rec.Key), eventID: strings.Clone(ev.EventId), label: rec.Label,
+			entities: cloneMap(ev.Entities),
 		}
 		c.nextIdx = idx
 	}
@@ -296,3 +298,11 @@ func (c *labelCursor) peek(limit int) (release, bool, error) {
 }
 
 func (c *labelCursor) pop() { c.next = nil }
+
+func cloneMap(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[strings.Clone(k)] = strings.Clone(v)
+	}
+	return out
+}

@@ -19,6 +19,8 @@ type Profile struct {
 	WatermarkInterval time.Duration
 	// Schema is the feature layout of the Profile's Events.
 	Schema *Schema
+	// Features are the real-time features computed per Entity.
+	Features []Feature
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).
 	Open func(dataDir string) (Source, error)
 }
