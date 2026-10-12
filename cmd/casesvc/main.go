@@ -91,7 +91,10 @@ func run(log *slog.Logger) error {
 		kgo.ConsumeTopics("scored."+*profile, "revised."+*profile),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.DisableAutoCommit(),
-		kgo.FetchMaxBytes(16<<20),
+		// Bounded so a backlog of Decisions fits the pod's memory limit.
+		kgo.FetchMaxBytes(4<<20),
+		kgo.FetchMaxPartitionBytes(1<<20),
+		kgo.MaxConcurrentFetches(1),
 	)
 	if err != nil {
 		return err
@@ -105,7 +108,8 @@ func run(log *slog.Logger) error {
 	log.Info("casesvc starting", "profile", *profile, "models", versions)
 
 	for {
-		fetches := cl.PollFetches(ctx)
+		// Bounded batches keep memory flat while a backlog drains.
+		fetches := cl.PollRecords(ctx, 2000)
 		if fetches.IsClientClosed() || ctx.Err() != nil {
 			return nil
 		}
@@ -147,18 +151,33 @@ func handle(ctx context.Context, st *store.Store, byVersion map[string]*model.Mo
 		}
 		decisionsStored.WithLabelValues(profile, s.Stage.String()).Inc()
 	}
-	if err := st.InsertDecisions(ctx, ds); err != nil {
+	fresh, err := st.InsertDecisions(ctx, ds)
+	if err != nil {
 		return fmt.Errorf("storing decisions: %w", err)
 	}
-	need, err := st.UpsertCases(ctx, ds)
+	// Redelivered and replayed Decisions never change Cases.
+	need, err := st.UpsertCases(ctx, fresh)
 	if err != nil {
 		return fmt.Errorf("upserting cases: %w", err)
 	}
 	// Explain each Case with the Decision UpsertCases recorded: the
-	// strictest in this batch, the earlier Stage on ties.
+	// strictest new one in this batch, the earlier Stage on ties.
+	type stageKey struct {
+		store.CaseKey
+		stage int16
+	}
+	isFresh := map[stageKey]bool{}
+	for _, d := range fresh {
+		isFresh[stageKey{store.CaseKey{Profile: d.Profile, EventID: d.EventID}, d.Stage}] = true
+	}
 	strictest := map[store.CaseKey]*unfraudv1.Scored{}
 	for _, s := range batch {
 		k := store.CaseKey{Profile: s.Profile, EventID: s.EventId}
+		sk := stageKey{k, int16(s.Stage)}
+		if !isFresh[sk] {
+			continue
+		}
+		delete(isFresh, sk) // the first copy is the one stored
 		if prev, ok := strictest[k]; !ok || s.Action > prev.Action || s.Action == prev.Action && s.Stage < prev.Stage {
 			strictest[k] = s
 		}

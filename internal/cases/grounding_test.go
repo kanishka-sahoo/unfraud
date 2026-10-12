@@ -21,6 +21,7 @@ func TestGroundAcceptsQuotedRoundedAndPercentNumbers(t *testing.T) {
 		"A 98.7% fraud probability; the $1,117.95 payment raised risk.",
 		"Two fraud labels in 30 days on device SAMSUNG|Android 7.0 (effect 2.4).",
 		"Seen on 2017-12-02.",
+		"An amount of 1.11795e+03 dollars.",
 	} {
 		if p := Ground(text, pk); len(p) > 0 {
 			t.Errorf("%q: unexpected problems %v", text, p)

@@ -42,8 +42,8 @@ func testServer(t *testing.T, replays Replays) *httptest.Server {
 		{Profile: "p", EventID: "e2", Stage: 1, EventTime: t0, Probability: .6, Action: 1, ModelAction: 1, ReasonCodes: []string{"R"}, ModelVersion: "m", ScoredAt: t0, IngestedAt: t0, Entities: map[string]string{"card": "c2"}},
 		{Profile: "p", EventID: "e3", Stage: 1, EventTime: t0, Probability: .1, Action: 0, ModelVersion: "m", ScoredAt: t0, IngestedAt: t0},
 	}
-	st.InsertDecisions(ctx, ds)
-	st.UpsertCases(ctx, ds)
+	fresh, _ := st.InsertDecisions(ctx, ds)
+	st.UpsertCases(ctx, fresh)
 	srv := httptest.NewServer(Handler(Config{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		GraphURL: func(string) string { return "http://127.0.0.1:1" }, Replays: replays}))
 	t.Cleanup(func() {

@@ -59,9 +59,13 @@ func TestDecisionsIgnoreRedelivery(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	ds := []Decision{dec("a", 1, 0, .1), dec("a", 2, 1, .6), dec("b", 1, 0, .2)}
-	for range 2 {
-		if err := s.InsertDecisions(ctx, ds); err != nil {
+	for i := range 2 {
+		fresh, err := s.InsertDecisions(ctx, ds)
+		if err != nil {
 			t.Fatal(err)
+		}
+		if want := []int{3, 0}[i]; len(fresh) != want {
+			t.Fatalf("round %d: %d new decisions, want %d", i, len(fresh), want)
 		}
 	}
 	var n int

@@ -13,7 +13,7 @@ var (
 	// idToken matches identifier-like tokens such as Card UIDs (13926_315_-13)
 	// or device strings (Windows|chrome 63.0); they must appear verbatim.
 	idToken = regexp.MustCompile(`[A-Za-z0-9.\-]*[_|][A-Za-z0-9_|.\-]+`)
-	number  = regexp.MustCompile(`-?\d[\d,]*(?:\.\d+)?`)
+	number  = regexp.MustCompile(`-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?`)
 )
 
 // Ground checks that every number and identifier in text comes from the
@@ -51,11 +51,19 @@ func Ground(text string, pk Packet) []string {
 	return problems
 }
 
+// decimals is how many decimal places s was written with, counting an
+// exponent (2.76e+06 is precise to 10^4).
 func decimals(s string) int {
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		return len(s) - i - 1
+	mant, exp, _ := strings.Cut(strings.ToLower(s), "e")
+	d := 0
+	if i := strings.IndexByte(mant, '.'); i >= 0 {
+		d = len(mant) - i - 1
 	}
-	return 0
+	if exp != "" {
+		e, _ := strconv.Atoi(exp)
+		d -= e
+	}
+	return d
 }
 
 // matches reports whether x, written with d decimals, is a rounding of some

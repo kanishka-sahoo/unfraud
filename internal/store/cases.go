@@ -25,10 +25,13 @@ type Decision struct {
 	Entities     map[string]string `json:"entities,omitempty"`
 }
 
-// InsertDecisions stores Decisions, ignoring ones already stored.
-func (s *Store) InsertDecisions(ctx context.Context, ds []Decision) error {
+// InsertDecisions stores Decisions, ignoring ones already stored, and
+// returns the ones that were new. Only new Decisions may change Cases: a
+// redelivered or replayed Event can score differently (its features already
+// include its first pass), and the first Decision per Event and Stage stands.
+func (s *Store) InsertDecisions(ctx context.Context, ds []Decision) ([]Decision, error) {
 	if len(ds) == 0 {
-		return nil
+		return nil, nil
 	}
 	n := len(ds)
 	prof, ids, rcs, vers := make([]string, n), make([]string, n), make([]string, n), make([]string, n)
@@ -40,16 +43,44 @@ func (s *Store) InsertDecisions(ctx context.Context, ds []Decision) error {
 		ma[i], ra[i], act[i] = d.ModelAction, d.RuleAction, d.Action
 		rcs[i], vers[i], sa[i], ia[i] = strings.Join(d.ReasonCodes, ","), d.ModelVersion, d.ScoredAt, d.IngestedAt
 	}
-	_, err := s.Pool.Exec(ctx, `
+	rows, err := s.Pool.Query(ctx, `
 		INSERT INTO decisions (profile, event_id, stage, event_time, probability, model_action, rule_action,
 		                       action, reason_codes, model_version, scored_at, ingested_at)
 		SELECT p, e, st, et, pr, ma, ra, a, COALESCE(string_to_array(NULLIF(rc, ''), ','), '{}'), v, sa, ia
 		FROM unnest($1::text[], $2::text[], $3::smallint[], $4::timestamptz[], $5::real[], $6::smallint[],
 		            $7::smallint[], $8::smallint[], $9::text[], $10::text[], $11::timestamptz[], $12::timestamptz[])
 		     AS t(p, e, st, et, pr, ma, ra, a, rc, v, sa, ia)
-		ON CONFLICT DO NOTHING`,
+		ON CONFLICT DO NOTHING
+		RETURNING profile, event_id, stage`,
 		prof, ids, stage, et, prob, ma, ra, act, rcs, vers, sa, ia)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type key struct {
+		p, e string
+		s    int16
+	}
+	inserted := map[key]bool{}
+	for rows.Next() {
+		var k key
+		if err := rows.Scan(&k.p, &k.e, &k.s); err != nil {
+			return nil, err
+		}
+		inserted[k] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var fresh []Decision
+	for _, d := range ds {
+		k := key{d.Profile, d.EventID, d.Stage}
+		if inserted[k] {
+			fresh = append(fresh, d)
+			delete(inserted, k) // a batch may hold the same Decision twice
+		}
+	}
+	return fresh, nil
 }
 
 // CaseKey identifies a Case.

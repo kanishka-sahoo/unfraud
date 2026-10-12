@@ -1,46 +1,67 @@
 # unfraud
 
-A real-time fraud detection engine. It scores transactions as they stream in, links accounts that share devices, emails and cards to catch coordinated fraud rings, and writes an analyst summary for each flagged case. It runs on local Kubernetes, and every metric can be reproduced from public datasets.
+A real-time fraud detection engine that runs on a laptop. Transactions stream through Kafka into a Go scorer that combines real-time features, fast rules and a LightGBM model; a single-writer graph service links accounts that share devices (or follows Bitcoin payment flows) and revises decisions with graph features; flagged events become cases with TreeSHAP explanations and grounded LLM summaries; a Next.js console shows it all. Everything runs on local Kubernetes, and every number below is regenerated from public datasets by the commands in this repository.
 
-- Design: [`docs/design.md`](docs/design.md)
-- Decisions: [`docs/adr/`](docs/adr)
-- Vocabulary: [`CONTEXT.md`](CONTEXT.md)
+- Design: [`docs/design.md`](docs/design.md) · decisions: [`docs/adr/`](docs/adr) · vocabulary: [`CONTEXT.md`](CONTEXT.md)
+- Results: [`results/ieee-cis-lightgbm.md`](results/ieee-cis-lightgbm.md), [`results/elliptic-lightgbm.md`](results/elliptic-lightgbm.md), [`results/summaries-stub.md`](results/summaries-stub.md)
 
-**Status:** milestone 3 (scoring). Datasets replay into Kafka; a Go feature engine computes 30 real-time features exactly as of each Event's time (in memory for training, in Valkey live, bit-identical); LightGBM models are trained in Python and served by a Go evaluator whose scores and TreeSHAP values match LightGBM exactly; the scorer runs in the cluster at about 1,300 events/s. graph-svc revises decisions with graph features, case-svc opens cases with TreeSHAP explanations, the summarizer writes grounded summaries, and a Next.js console (`make console`) shows it all. Hardening and final benchmarks are next.
+## Results
 
-Current results: [`results/ieee-cis-lightgbm.md`](results/ieee-cis-lightgbm.md).
+**IEEE-CIS card payments** (time split; test month May 2018, 89,326 transactions, 3.49% fraud):
 
-## Requirements
+| Model | PR-AUC | Recall at 1% / 2% / 5% of transactions flagged |
+|---|---|---|
+| Static features | 0.558 | 24.9% / 42.1% / 62.8% |
+| + 30 real-time features | 0.611 | 27.6% / 45.6% / 65.8% |
+| + 5 device-graph features | **0.625** | **27.9% / 46.1% / 66.4%** |
 
-- Linux or macOS with Docker, and about 5 GB of free RAM for the default `lite` cluster
-- Go 1.27, [buf](https://buf.build), kind, kubectl, Helm 4
-- A Kaggle account with an API token in `~/.kaggle/`. For IEEE-CIS, accept the [competition rules](https://www.kaggle.com/competitions/ieee-fraud-detection/rules); Kaggle also requires a phone-verified account to download competition data.
+- Hand-written rules did not beat the model: at the same alert volume the model alone catches more fraud (59.7% vs 50.1% recall). Three rules were retired on validation-month evidence.
+- Ring alerts (flagging every card in a fraud-heavy device community) lost to the model at equal volume (5.1% vs 18.9% precision on the validation month) and are off; the graph helps through its features.
 
-## Quickstart
+**Elliptic Bitcoin** (test timesteps 35–49, the period Weber et al. 2019 used):
+
+| | Illicit F1 | PR-AUC |
+|---|---|---|
+| Provisional: transaction's own features, on arrival | 0.734 | 0.766 |
+| Revised: + payment-graph features, when its timestep closes | **0.780** | **0.793** |
+| Weber et al.: Random Forest / GCN | 0.788 / 0.628 | |
+
+The stream's own graph features match the dataset's precomputed neighbour aggregates (PR-AUC 0.793 vs 0.792). Every model collapses from timestep 43 (a dark-market shutdown); the report shows it.
+
+**The running system** (4-core, 8 GB laptop, full pipeline in the cluster at about 3.7 GB):
+
+- Go scores equal Python LightGBM exactly, and Go TreeSHAP matches LightGBM's to 1e-9.
+- Live features in Valkey are bit-identical to the offline training features, including when every record is delivered twice.
+- Revised decisions from graph-svc match the offline Accuracy Run on all 590,540 IEEE-CIS and 203,769 Elliptic events; provisional decisions differ on 77 of 590,540 (partition concurrency).
+- End-to-end latency, Kafka in to decision out, at about 200 events/s: provisional p50 17 ms, p99 428 ms; revised p50 7 ms, p99 65 ms.
+
+## Run it
+
+Requirements: Linux or macOS with Docker and about 5 GB of free RAM; Go 1.27, buf, kind, kubectl, Helm 4, Node 24 with pnpm, uv; a Kaggle API token in `~/.kaggle/` (for IEEE-CIS, accept the [competition rules](https://www.kaggle.com/competitions/ieee-fraud-detection/rules) with a phone-verified account).
 
 ```sh
-make data          # download datasets (~2.5 GB) and verify checksums
-make cluster-up    # kind cluster + Strimzi operator
-make deploy        # Kafka (KRaft) and input topics
-make images        # build images and load them into kind
-make replay PROFILE=elliptic          # stream Elliptic into input.elliptic
-make replay PROFILE=paysim SPEED=3600 # one hour of Event Time per second
+make data                              # download datasets (~2.5 GB), verify checksums
+make cluster-up deploy images          # kind + Strimzi + CloudNativePG; Kafka, Valkey, Postgres, console
 
-# Training and evaluation (outside the cluster)
-make featurize PROFILE=ieee-cis       # Accuracy Run -> data/features/ieee-cis
-make train PROFILE=ieee-cis           # static and real-time LightGBM models
-make parity PROFILE=ieee-cis          # Go scores must equal Python's
-make deploy-model PROFILE=ieee-cis    # ship the model as an image, run its scorer
+# Train (outside the cluster)
+make featurize PROFILE=ieee-cis        # Accuracy Run -> training tables
+make train PROFILE=ieee-cis            # static, real-time and graph models
+make parity PROFILE=ieee-cis           # Go scores must equal Python's
+
+# Serve
+make deploy-model PROFILE=ieee-cis MODEL=lgbm-realtime             # the scorer
+make deploy-model PROFILE=ieee-cis MODEL=lgbm-graph SERVICE=graph  # graph-svc
+make replay PROFILE=ieee-cis                                        # stream the dataset
+
+make console                           # http://localhost:3000
+make grafana                           # http://localhost:3001
 ```
 
-`make help` lists every target. `make test` runs unit tests; `make test-integration` also runs them against the cluster's Kafka.
+Summaries use a template writer unless you add an OpenRouter key: put it in `~/.config/unfraud/openrouter_key`, run `make secrets`, and deploy with `--set summarizer.driver=openrouter`. `scripts/summary-report.sh` then reports grounding rate, latency and cost per model. `make help` lists every target.
 
-## Datasets
+## What it does not do
 
-| Profile | Role | Licence |
-|---|---|---|
-| IEEE-CIS | Fraud metrics (model and attribute graph) | Kaggle competition rules |
-| Elliptic | Graph metrics | CC BY-NC-ND 4.0 |
-| PaySim | Load testing only | CC BY-SA 4.0 |
-
-See [ADR-0001](docs/adr/0001-dataset-roles.md) for why each dataset has only one role.
+- It is local-only: no authentication, one Kafka broker, one replica per service. KEDA autoscaling, a hot-standby graph service and tracing are designed but not built, because they could not be validated on the reference machine.
+- IEEE-CIS has no raw IP addresses or coordinates, so "movement" means address and distance-field changes, and only 26% of transactions carry device data for the graph.
+- PaySim is used for load testing only; its balance columns give away the label.
+- Real-LLM summary quality has not been measured yet (no key was available while building); the grounding check and the reporting are in place.

@@ -5,7 +5,7 @@ Python exists only in the offline `train` CLI. Serving loads LightGBM's text mod
 - in CI, against committed fixtures where LightGBM's own raw scores cover every routing edge (negative, unseen and missing categories; ±0 under `zero_as_missing`), to within 1e-12;
 - on real data (`make parity`), where the Go path from the raw features table through `model.Encode` must match Python's test-month scores to within 1e-6.
 
-Model inputs are float32 in training and rounded to float32 in Go, so split thresholds compare identical values. CatBoost is trained and reported, and moves to serving through ONNX Runtime (cgo) only if it clearly wins.
+Model inputs are float32 in training and rounded to float32 in Go, so split thresholds compare identical values. CatBoost was planned as an offline comparison (moving to serving through ONNX Runtime only if it clearly won) but has not been trained.
 
 ## Considered Options
 

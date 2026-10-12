@@ -5,6 +5,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/kanishka-sahoo/unfraud/internal/cases"
@@ -54,10 +55,10 @@ func (Stub) Summarize(_ context.Context, pk cases.Packet) (cases.Summary, Meta, 
 		if f.Effect < 0 {
 			dir = "lowered"
 		}
-		why = append(why, fmt.Sprintf("%s (%v) %s the risk", f.Feature, f.Value, dir))
+		why = append(why, fmt.Sprintf("%s (%s) %s the risk", f.Feature, plain(f.Value), dir))
 	}
-	text := fmt.Sprintf("Case %s was sent to %s with a fraud probability of %v, flagged by %s.",
-		pk.CaseID, pk.Decision.Action, pk.Decision.Probability, pk.Decision.FlaggedBy)
+	text := fmt.Sprintf("Case %s was sent to %s with a fraud probability of %s, flagged by %s.",
+		pk.CaseID, pk.Decision.Action, plain(pk.Decision.Probability), pk.Decision.FlaggedBy)
 	if len(why) > 0 {
 		text += " Strongest named factors: " + strings.Join(why, "; ") + "."
 	}
@@ -66,10 +67,18 @@ func (Stub) Summarize(_ context.Context, pk cases.Packet) (cases.Summary, Meta, 
 		points = append(points, "Rule "+r.Code+": "+r.Description)
 	}
 	if pk.Anonymized != nil {
-		points = append(points, fmt.Sprintf("Anonymized features combined effect: %v", pk.Anonymized.Effect))
+		points = append(points, "Anonymized features combined effect: "+plain(pk.Anonymized.Effect))
 	}
 	if len(points) > 4 {
 		points = points[:4]
 	}
 	return cases.Summary{Text: text, KeyPoints: points}, Meta{Driver: "stub", Model: "template"}, nil
+}
+
+// plain writes numbers without exponents, as analysts read them.
+func plain(v any) string {
+	if f, ok := v.(float64); ok {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	return fmt.Sprint(v)
 }

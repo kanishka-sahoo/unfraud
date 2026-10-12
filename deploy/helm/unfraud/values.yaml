@@ -64,10 +64,10 @@ postgres:
     limits: { memory: 320Mi }
 
 cases:
-  goMemLimit: 100MiB
+  goMemLimit: 150MiB
   resources:
-    requests: { cpu: 200m, memory: 128Mi }
-    limits: { memory: 128Mi }
+    requests: { cpu: 200m, memory: 192Mi }
+    limits: { memory: 192Mi }
 
 summarizer:
   enabled: true

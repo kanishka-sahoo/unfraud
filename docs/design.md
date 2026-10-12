@@ -97,13 +97,13 @@ Services contain no dataset-specific logic.
 | Service | Language | Scaling | Responsibility |
 |---|---|---|---|
 | `replayer` | Go | k8s Job, one per Replay | Runs a Profile adapter and emits in Event Time order at a speed multiplier (or as fast as possible). Emits Label Releases on the delayed schedule. |
-| `scorer` | Go | Horizontal, KEDA on consumer lag | One worker per assigned partition: feature exchange with Valkey (one round trip per Event), model, rules, **Provisional Score** and **Decision**, Shadow Model scoring. Writes `scored.<profile>`. Stateless; Contributions are left to case-svc. |
+| `scorer` | Go | Horizontal by partitions (one replica in `lite`) | One worker per assigned partition: feature exchange with Valkey (one round trip per Event), model, rules, **Provisional Score** and **Decision**, Shadow Model scoring. Writes `scored.<profile>`. Stateless; Contributions are left to case-svc. |
 | `graph-svc` | Go | Single writer ([ADR-0007](./adr/0007-single-writer-graph-service.md)) | Reads every partition in Event Time order with exact in-memory feature and graph state, and writes **Revised** Decisions to `revised.<profile>` with a graph-aware model ([ADR-0017](./adr/0017-graph-svc-revises-instead-of-serving-graph-features.md)). Recovers by re-reading the input topic. |
 | `case-svc` | Go | Horizontal | Opens and updates **Cases**, computes **Contributions** (Go TreeSHAP) for flagged Events from the model input the scorer attaches, builds **Case Packets**, applies Revisions, stores everything in Postgres. |
 | `summarizer` | Go | Horizontal, rate-limited | Turns Case Packet into **Summary** via OpenRouter, runs the Grounding check, retries, sends failures to the DLQ ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md)). |
 | `cases-api` | Go | Horizontal | REST (OpenAPI) + SSE for the web app. Analyst Dispositions. Replay control (creates replayer Jobs). Model promotion. |
 | `web` | Next.js | Horizontal | The analyst and operator UI (§9). |
-| `train` | Python CLI | Batch Job | Turns the feature Parquet into LightGBM/CatBoost models, evaluation, GraphSAGE baseline. Not part of the runtime. |
+| `train` | Python CLI | Batch Job | Turns the feature Parquet into LightGBM models and evaluation reports. Not part of the runtime. |
 
 ### Delivery semantics
 
@@ -131,7 +131,7 @@ State lives in Valkey as time-bucketed counters, with Lua scripts that update an
 ## 6. Scoring ([ADR-0003](./adr/0003-two-stage-scoring.md), [ADR-0008](./adr/0008-pure-go-runtime-inference.md))
 
 1. **Rules** (`profile.Rule` values): all conditions hold → review or block, with a Reason Code. Rules only escalate the model's Decision. They are written before results and reviewed on the validation month only: a Rule that catches no fraud there is retired (kept in code with the evidence).
-2. **Model**: LightGBM served in-process by our own Go evaluator (`internal/model/lgbm`; `leaves` can't read LightGBM 4.x models). CatBoost is trained and reported, and served through ONNX Runtime only if it clearly wins.
+2. **Model**: LightGBM served in-process by our own Go evaluator (`internal/model/lgbm`; `leaves` can't read LightGBM 4.x models). CatBoost was planned as an offline comparison but has not been trained or evaluated.
 3. **Contributions**: Go TreeSHAP, checked in CI against LightGBM `pred_contrib` (tolerance 1e-9), alongside the Go-vs-Python score parity tests (fixtures in CI, real data with `make parity`). TreeSHAP costs about trees × leaves × depth², so it runs in case-svc for flagged Events only, not in the scoring path. Models are trained with `max_depth=10`: on IEEE-CIS that costs about 1% PR-AUC and makes scoring 19× faster (21 µs) and TreeSHAP 12× faster (16 ms).
 4. **Decision**: thresholds are set from the **Alert Budget** on the validation month.
 5. **Revision**: graph-svc sends `revisions` when new structure changes an Event's graph features: an Elliptic Watermark closes a timestep, or a Ring Alert fires on IEEE-CIS. Revised Decisions update the Case; the Provisional Decision is never overwritten.
@@ -192,7 +192,7 @@ Several budgets are needed because fraud is 3.5% of IEEE-CIS Events: a 0.5% budg
 | + graph features | | | | |
 | + Ring Alerts / Revisions | | | | |
 
-Elliptic: illicit F1 on the timestep 35–49 test split for local-only and all-features variants, Provisional versus Revised, compared with Weber et al. 2019 and our GraphSAGE baseline, with a per-timestep chart around timestep 43.
+Elliptic: illicit F1 on the timestep 35–49 test split for local-only and all-features variants, Provisional versus Revised, compared with Weber et al. 2019 (Random Forest and GCN), with a per-timestep chart around timestep 43.
 
 PaySim: System Runs only.
 
@@ -218,17 +218,17 @@ Not built, because none of it could be validated on the reference machine: KEDA 
 ## 12. Repo layout
 
 ```
-cmd/            replayer, scorer, graph-svc, case-svc, summarizer, cases-api
-internal/       profile/, features/, rules/, model/ (leaves, treeshap), graph/, llm/, kafka/, store/
-profiles/       ieee-cis/, paysim/, elliptic/
-proto/          buf module
+cmd/            replayer, featurize, accuracy, scorer, graphsvc, casesvc, summarizer, casesapi, drift
+internal/       profile/ (+ ieeecis, paysim, elliptic, registry), features/, graph/, rules/, scoring/,
+                model/ (lgbm evaluator + TreeSHAP), align/, replay/, store/, cases/, llm/, api/, dlq/, table/, csvx/
+proto/          buf module (input and scored schemas); gen/ holds the generated Go
 api/            cases-api OpenAPI spec
-web/            Next.js app
-train/          Python CLI (uv): build-features, train, evaluate, gnn-baseline
-deploy/         helm/, kind/, Tiltfile, grafana/
+web/            Next.js console and Playwright tests
+train/          Python CLI (uv): train, report, fixture
+deploy/         docker/, helm/unfraud (chart, values, Grafana dashboard), kind/
+scripts/        fetch-data, system-run, summary-report, console-local
+results/        published results (embedded in cases-api)
 docs/           design.md, adr/
-results/        published benchmark outputs
-Makefile        data, secrets, up, train, bench-accuracy, bench-system, e2e
 ```
 
 ## 13. Milestones
@@ -241,7 +241,7 @@ All seven are done; see `git log` for what each delivered.
 4. **Graph:** graph-svc, Revisions, Rings, Elliptic end to end; remaining results rows.
 5. **Cases:** case-svc, Postgres, summarizer with OpenRouter and the stub driver, Grounding metrics.
 6. **Web app:** cases-api plus the Next.js app (cases and rings first, then overview, models, benchmarks, replay).
-7. **Hardening:** KEDA, DLQs, degraded modes, Shadow Models, standby graph-svc, System Runs, dashboards, Playwright end-to-end tests.
+7. **Hardening:** dead-letter topics, degraded mode, Shadow Models, Prometheus and Grafana, System Runs and paced latency, Playwright end-to-end tests. (KEDA and a standby graph-svc were not built; see §11.)
 
 ## 14. Open questions
 

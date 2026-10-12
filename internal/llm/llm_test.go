@@ -20,6 +20,7 @@ var packet = cases.Packet{
 	Factors: []cases.Factor{
 		{Feature: "card_fraud_labels_30d", Description: "confirmed fraud", Value: 3.0, Effect: 2.413},
 		{Feature: "TransactionAmt", Description: "amount", Value: 117.95, Effect: 0.512},
+		{Feature: "card_since_last", Description: "seconds since", Value: 2762261.0, Effect: -0.3},
 	},
 	Anonymized: &cases.Factor{Feature: "anonymized", Effect: 0.88},
 }
