@@ -8,7 +8,7 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model secrets console grafana cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity report accuracy system-run check-cases fixtures build images deploy-model secrets console grafana cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -41,9 +41,9 @@ featurize: ## Accuracy Run to training tables: make featurize PROFILE=ieee-cis
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	go run ./cmd/featurize -profile $(PROFILE)
 
-train: ## Train static and real-time models: make train PROFILE=ieee-cis
+train: ## Train every feature set of a Profile: make train PROFILE=ieee-cis
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
-	@for fs in static realtime graph; do \
+	@for fs in $(if $(filter elliptic,$(PROFILE)),local flow dataset_agg,static realtime graph); do \
 	  uv run --project train unfraud-train train --features data/features/$(PROFILE) \
 	    --out models/$(PROFILE)/lgbm-$$fs --feature-set $$fs || exit 1; \
 	done
@@ -52,6 +52,21 @@ parity: ## Check Go scores match Python on the test month: make parity PROFILE=i
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	UNFRAUD_PARITY_MODEL=models/$(PROFILE)/lgbm-$(or $(SET),realtime) UNFRAUD_PARITY_FEATURES=data/features/$(PROFILE) \
 	  go test -count=1 -run TestParityWithPython -v ./internal/model/
+
+report: ## Regenerate a Profile's results tables: make report PROFILE=ieee-cis
+	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
+	uv run --project train unfraud-train report --models models/$(PROFILE) --out results/$(PROFILE)-lightgbm --features data/features/$(PROFILE)
+
+accuracy: ## Accuracy Run through the scorer: make accuracy PROFILE=ieee-cis MODEL=lgbm-realtime
+	@test -n "$(PROFILE)" -a -n "$(MODEL)" || { echo "PROFILE and MODEL are required"; exit 1; }
+	go run ./cmd/accuracy -profile $(PROFILE) -model models/$(PROFILE)/$(MODEL)
+
+system-run: ## Score the whole input topic in the cluster from clean state and compare: make system-run PROFILE=ieee-cis
+	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
+	./scripts/system-run.sh $(PROFILE) models/$(PROFILE)/lgbm-realtime/decisions.parquet results/$(PROFILE)-system-run-aligned.json
+
+check-cases: ## Check Case invariants against stored Decisions
+	./scripts/check-cases.sh
 
 fixtures: ## Regenerate the Go evaluator's LightGBM fixtures
 	uv run --project train unfraud-train fixture --out internal/model/lgbm/testdata
