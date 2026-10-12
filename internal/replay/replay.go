@@ -89,6 +89,7 @@ type runner struct {
 	// eventsRead counts Events taken from the events Source; the label cursor
 	// never runs past it.
 	eventsRead int
+	seq        int64 // last Envelope.Sequence assigned
 	stats      Stats
 	started    bool
 	draining   bool
@@ -177,6 +178,8 @@ func (r *runner) emit(ctx context.Context, o Out) error {
 	if err := r.pace(ctx, t); err != nil {
 		return err
 	}
+	r.seq++
+	o.Env.Sequence = r.seq
 	if err := r.sink.Send(ctx, o); err != nil {
 		return err
 	}
@@ -198,9 +201,11 @@ func (r *runner) emit(ctx context.Context, o Out) error {
 }
 
 func (r *runner) sendWatermark(ctx context.Context, ms int64) error {
+	r.seq++
 	env := &unfraudv1.Envelope{
 		Profile:     r.profile,
 		EventTimeMs: ms,
+		Sequence:    r.seq,
 		Payload:     &unfraudv1.Envelope_Watermark{Watermark: &unfraudv1.Watermark{}},
 	}
 	if err := r.sink.Send(ctx, Out{Env: env}); err != nil {

@@ -7,17 +7,13 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -87,7 +83,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	version, err := modelVersion(*modelDir)
+	version, err := scoring.ModelVersion(*modelDir)
 	if err != nil {
 		return err
 	}
@@ -169,12 +165,12 @@ func run(log *slog.Logger) error {
 			// record is scored, so buffered records stay small.
 			items := make([]align.Item, 0, len(ftp.Records))
 			for _, r := range ftp.Records {
-				t, err := eventTime(r.Value)
+				t, seq, err := ordering(r.Value)
 				if err != nil {
 					log.Error("undecodable record skipped", "partition", r.Partition, "offset", r.Offset, "err", err)
 					continue
 				}
-				items = append(items, align.Item{Partition: r.Partition, Offset: r.Offset, TimeMs: t, Value: r})
+				items = append(items, align.Item{Partition: r.Partition, Offset: r.Offset, TimeMs: t, Sequence: seq, Value: r})
 			}
 			buf.Add(ftp.Partition, items, ftp.HighWatermark)
 			fetched = append(fetched, ftp.Partition)
@@ -232,28 +228,35 @@ const (
 	maxQueued = 2000
 )
 
-// eventTime reads Envelope.event_time_ms (field 2) without decoding the rest.
-func eventTime(b []byte) (int64, error) {
+// ordering reads Envelope.event_time_ms (field 2) and sequence (field 3)
+// without decoding the rest.
+func ordering(b []byte) (timeMs, seq int64, err error) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
 		if n < 0 {
-			return 0, protowire.ParseError(n)
+			return 0, 0, protowire.ParseError(n)
 		}
 		b = b[n:]
-		if num == 2 && typ == protowire.VarintType {
+		if (num == 2 || num == 3) && typ == protowire.VarintType {
 			v, n := protowire.ConsumeVarint(b)
 			if n < 0 {
-				return 0, protowire.ParseError(n)
+				return 0, 0, protowire.ParseError(n)
 			}
-			return int64(v), nil
+			b = b[n:]
+			if num == 2 {
+				timeMs = int64(v)
+			} else {
+				seq = int64(v)
+			}
+			continue
 		}
 		n = protowire.ConsumeFieldValue(num, typ, b)
 		if n < 0 {
-			return 0, protowire.ParseError(n)
+			return 0, 0, protowire.ParseError(n)
 		}
 		b = b[n:]
 	}
-	return 0, nil
+	return timeMs, seq, nil
 }
 
 type service struct {
@@ -329,7 +332,7 @@ func (s *service) partition(ctx context.Context, partition int32, recs []*kgo.Re
 		endToEndSeconds.WithLabelValues(s.p.Name).Observe(now.Sub(r.Timestamp).Seconds())
 		decisions.WithLabelValues(s.p.Name, d.Action.String()).Inc()
 
-		b, err := proto.Marshal(scored(s.p.Name, s.version, d, r.Timestamp, now))
+		b, err := proto.Marshal(scoring.Proto(s.p.Name, s.version, unfraudv1.Stage_STAGE_PROVISIONAL, d, r.Timestamp, now))
 		if err != nil {
 			return err
 		}
@@ -354,43 +357,6 @@ func kind(env *unfraudv1.Envelope) string {
 		return "label_release"
 	}
 	return "unknown"
-}
-
-var actions = map[profile.Action]unfraudv1.Action{
-	profile.Approve: unfraudv1.Action_ACTION_APPROVE,
-	profile.Review:  unfraudv1.Action_ACTION_REVIEW,
-	profile.Block:   unfraudv1.Action_ACTION_BLOCK,
-}
-
-func scored(prof, version string, d *scoring.Decision, ingested, now time.Time) *unfraudv1.Scored {
-	out := &unfraudv1.Scored{
-		Profile: prof, EventId: d.EventID, EventTimeMs: d.EventTimeMs, Entities: d.Entities,
-		Probability: d.Probability, RawScore: d.Raw,
-		ModelAction: actions[d.ModelAction], RuleAction: actions[d.RuleAction], Action: actions[d.Action],
-		ModelVersion: version, IngestedAtMs: ingested.UnixMilli(), ScoredAtMs: now.UnixMilli(),
-	}
-	for _, h := range d.Hits {
-		out.ReasonCodes = append(out.ReasonCodes, h.Code)
-	}
-	if d.Action != profile.Approve {
-		out.ModelInput = d.Input
-	}
-	return out
-}
-
-// modelVersion is a short hash of the model file, so Decisions name the
-// exact artifact that produced them.
-func modelVersion(dir string) (string, error) {
-	f, err := os.Open(filepath.Join(dir, "model.txt"))
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil))[:12], nil
 }
 
 func serve(log *slog.Logger, addr string, ready <-chan struct{}) {

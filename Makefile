@@ -34,7 +34,7 @@ test-integration: ## Run tests against the cluster's Kafka (needs make cluster-u
 reset-topic: ## Delete and recreate a Profile's input topic: make reset-topic PROFILE=elliptic
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	kubectl -n $(NAMESPACE) delete kafkatopic input.$(PROFILE) --wait
-	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) --reuse-values
+	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) --reset-then-reuse-values
 	kubectl -n $(NAMESPACE) wait kafkatopic/input.$(PROFILE) --for=condition=Ready --timeout=120s
 
 featurize: ## Accuracy Run to training tables: make featurize PROFILE=ieee-cis
@@ -65,15 +65,15 @@ images: ## Build images and load them into the kind cluster
 	  kind load docker-image --name $(CLUSTER) unfraud/$$c:$(TAG); \
 	done
 
-deploy-model: ## Ship a model as an image and run its scorer: make deploy-model PROFILE=ieee-cis [MODEL=lgbm-realtime]
+deploy-model: ## Ship a model as an image and run it: make deploy-model PROFILE=ieee-cis [MODEL=lgbm-realtime] [SERVICE=scorer|graph]
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	$(eval DIR := models/$(PROFILE)/$(or $(MODEL),lgbm-realtime))
 	$(eval IMG := unfraud/model-$(PROFILE):$(shell sha256sum $(DIR)/model.txt | cut -c1-12))
 	docker build -q -f deploy/docker/Dockerfile.model -t $(IMG) $(DIR)
 	kind load docker-image --name $(CLUSTER) $(IMG)
-	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --reuse-values --set image.tag=$(TAG) \
-	  --set-string 'scorer.models.$(PROFILE)=$(IMG)'
-	kubectl -n $(NAMESPACE) rollout status deploy/scorer-$(PROFILE) --timeout=180s
+	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --reset-then-reuse-values --set image.tag=$(TAG) \
+	  --set-string '$(or $(SERVICE),scorer).models.$(PROFILE)=$(IMG)'
+	kubectl -n $(NAMESPACE) rollout status deploy/$(subst graph,graphsvc,$(or $(SERVICE),scorer))-$(PROFILE) --timeout=300s
 
 cluster-up: ## Create the kind cluster and install operators
 	./deploy/kind/up.sh

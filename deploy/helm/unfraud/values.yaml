@@ -52,6 +52,14 @@ scorer:
   # Profile -> model image. A scorer runs for each entry (set by `make deploy-model`).
   models: {}
 
+graph:
+  goMemLimit: 600MiB
+  resources:
+    requests: { cpu: 500m, memory: 768Mi }
+    limits: { memory: 768Mi }
+  # Profile -> Revision model image. graph-svc runs for each entry.
+  models: {}
+
 # Rendered on demand by `make replay`, never by `helm install`.
 replay:
   profile: ""

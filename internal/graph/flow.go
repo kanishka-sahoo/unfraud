@@ -20,6 +20,7 @@ type Flow struct {
 	nodes   map[string]int // node id -> position in this period
 	ids     []string
 	vals    [][]float64
+	links   [][2]string   // the period's Links, resolved when it closes
 	out     map[int][]int // node -> nodes it pays
 	in      map[int][]int
 	period  int64 // Event Time of the buffered period
@@ -49,7 +50,7 @@ func NewFlow(cfg profile.FlowConfig, schema *profile.Schema) (*Flow, error) {
 }
 
 func (f *Flow) reset() {
-	f.nodes, f.ids, f.vals = map[string]int{}, nil, nil
+	f.nodes, f.ids, f.vals, f.links = map[string]int{}, nil, nil, nil
 	f.out, f.in = map[int][]int{}, map[int][]int{}
 }
 
@@ -77,12 +78,9 @@ func (f *Flow) Process(env *unfraudv1.Envelope) {
 		f.vals = append(f.vals, v)
 		f.period = env.EventTimeMs
 	case *unfraudv1.Envelope_Link:
-		src, sok := f.nodes[p.Link.Src.Id]
-		dst, dok := f.nodes[p.Link.Dst.Id]
-		if sok && dok && src != dst {
-			f.out[src] = append(f.out[src], dst)
-			f.in[dst] = append(f.in[dst], src)
-		}
+		// Within a period, a Link may arrive before its Events when several
+		// partitions are merged, so Links are resolved only at close.
+		f.links = append(f.links, [2]string{p.Link.Src.Id, p.Link.Dst.Id})
 	case *unfraudv1.Envelope_Watermark:
 		if len(f.ids) > 0 && env.EventTimeMs >= f.period {
 			f.close(env.EventTimeMs)
@@ -91,6 +89,14 @@ func (f *Flow) Process(env *unfraudv1.Envelope) {
 }
 
 func (f *Flow) close(closed int64) {
+	for _, l := range f.links {
+		src, sok := f.nodes[l[0]]
+		dst, dok := f.nodes[l[1]]
+		if sok && dok && src != dst {
+			f.out[src] = append(f.out[src], dst)
+			f.in[dst] = append(f.in[dst], src)
+		}
+	}
 	n := len(f.ids)
 	for i := 0; i < n; i++ {
 		row := make([]float64, len(f.cols))

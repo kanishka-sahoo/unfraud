@@ -11,6 +11,16 @@ enum Action {
   ACTION_BLOCK = 3;
 }
 
+// Stage says which scoring stage made a Decision (ADR-0003).
+enum Stage {
+  STAGE_UNSPECIFIED = 0;
+  // On arrival, by the partition-parallel scorer (scored.<profile>).
+  STAGE_PROVISIONAL = 1;
+  // By graph-svc, with graph or flow features (revised.<profile>). For
+  // Elliptic this happens when the Event's timestep closes.
+  STAGE_REVISED = 2;
+}
+
 // Scored is the scorer's Decision for one Event, written to scored.<profile>
 // with the Event's partition key.
 message Scored {
@@ -38,4 +48,6 @@ message Scored {
   // Decision was made. Their difference is end-to-end scoring latency.
   int64 ingested_at_ms = 13;
   int64 scored_at_ms = 14;
+
+  Stage stage = 15;
 }

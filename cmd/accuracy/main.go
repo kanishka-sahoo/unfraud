@@ -57,7 +57,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	sc, err := scoring.New(p, features.NewMemory(), *modelDir, scoring.DefaultConfig, features.WithGraph(p))
+	sc, err := scoring.New(p, features.NewMemory(), *modelDir, scoring.DefaultConfig, features.WithGraph(p), features.WithFlow(p))
 	if err != nil {
 		return err
 	}
@@ -126,9 +126,18 @@ func (s *decisionSink) Send(ctx context.Context, o replay.Out) error {
 		}
 		s.revisions++
 	}
+	for _, c := range s.sc.Closed() {
+		if err := s.write(c); err != nil {
+			return err
+		}
+	}
 	if d == nil {
 		return nil
 	}
+	return s.write(d)
+}
+
+func (s *decisionSink) write(d *scoring.Decision) error {
 	if d.Action > 0 {
 		s.flagged++
 	}

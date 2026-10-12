@@ -17,6 +17,8 @@ Alignment costs about 6% throughput and removes 94% of Decision drift.
 
 The first measurement blamed all drift on misalignment and was wrong: the input topic had been written by an older replayer whose Label Releases lacked Entities, and the scorer was restarting after out-of-memory kills, re-applying feature updates on redelivery. Both are fixed (the engine now rejects such Label Releases, and updates carry idempotency Guards) and the table above was measured afterwards.
 
+Event Time ties (IEEE-CIS has one-second resolution) are broken by `Envelope.sequence`, the replayer's emission index, so merging partitions recovers the exact original order. With it, the single-writer graph-svc reproduces the Accuracy Run bit for bit (ADR-0017).
+
 ## Considered Options
 
 - One worker for all partitions in strict Event Time order: no drift, but no parallelism, and it still needs the buffering above.

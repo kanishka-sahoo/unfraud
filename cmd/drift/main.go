@@ -59,6 +59,7 @@ func run() error {
 		decisions = flag.String("decisions", "", "Accuracy Run decisions.parquet")
 		countOnly = flag.Bool("count-only", false, "print how many Decisions the Accuracy Run has and exit")
 		elapsed   = flag.Int("elapsed", 0, "System Run duration in seconds, to report throughput")
+		topicFlag = flag.String("topic", "", "topic to compare (default scored.<profile>)")
 	)
 	flag.Parse()
 	want, err := readDecisions(*decisions)
@@ -73,6 +74,9 @@ func run() error {
 	defer cancel()
 
 	topic := "scored." + *profile
+	if *topicFlag != "" {
+		topic = *topicFlag
+	}
 	cl, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(*brokers, ",")...), kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
 	if err != nil {

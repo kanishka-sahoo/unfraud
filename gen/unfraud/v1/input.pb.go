@@ -79,6 +79,10 @@ type Envelope struct {
 	// Event Time in Unix milliseconds. For a LabelRelease this is the release
 	// time; for a Watermark it is the watermark itself.
 	EventTimeMs int64 `protobuf:"varint,2,opt,name=event_time_ms,json=eventTimeMs,proto3" json:"event_time_ms,omitempty"`
+	// Position in the replayed stream. Consumers that merge partitions break
+	// Event Time ties with it, recovering the exact original order (copies of
+	// a Watermark share one).
+	Sequence int64 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*Envelope_Event
@@ -130,6 +134,13 @@ func (x *Envelope) GetProfile() string {
 func (x *Envelope) GetEventTimeMs() int64 {
 	if x != nil {
 		return x.EventTimeMs
+	}
+	return 0
+}
+
+func (x *Envelope) GetSequence() int64 {
+	if x != nil {
+		return x.Sequence
 	}
 	return 0
 }
@@ -513,10 +524,11 @@ var File_unfraud_v1_input_proto protoreflect.FileDescriptor
 const file_unfraud_v1_input_proto_rawDesc = "" +
 	"\n" +
 	"\x16unfraud/v1/input.proto\x12\n" +
-	"unfraud.v1\"\x9e\x02\n" +
+	"unfraud.v1\"\xba\x02\n" +
 	"\bEnvelope\x12\x18\n" +
 	"\aprofile\x18\x01 \x01(\tR\aprofile\x12\"\n" +
-	"\revent_time_ms\x18\x02 \x01(\x03R\veventTimeMs\x12)\n" +
+	"\revent_time_ms\x18\x02 \x01(\x03R\veventTimeMs\x12\x1a\n" +
+	"\bsequence\x18\x03 \x01(\x03R\bsequence\x12)\n" +
 	"\x05event\x18\n" +
 	" \x01(\v2\x11.unfraud.v1.EventH\x00R\x05event\x12&\n" +
 	"\x04link\x18\v \x01(\v2\x10.unfraud.v1.LinkH\x00R\x04link\x125\n" +

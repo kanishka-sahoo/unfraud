@@ -9,7 +9,7 @@ kafka() { kubectl -n "$ns" exec unfraud-dual-role-0 -c kafka -- "$@"; }
 count() { kafka bin/kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic "$1" 2>/dev/null | awk -F: '{s+=$3} END{print s+0}'; }
 
 echo "stopping scorer"
-helm upgrade unfraud "$chart" -n "$ns" --reuse-values --set scorer.replicas=0 >/dev/null
+helm upgrade unfraud "$chart" -n "$ns" --reset-then-reuse-values --set scorer.replicas=0 >/dev/null
 until [ -z "$(kubectl -n "$ns" get pods -l app.kubernetes.io/name=scorer,unfraud.dev/profile="$profile" -o name)" ]; do sleep 2; done
 # Delete the consumer group so the scorer starts from the earliest offset.
 # kafka-consumer-groups exits 0 even when it refuses (while the departed
@@ -22,7 +22,7 @@ done
 echo "resetting scored.$profile and feature state"
 kubectl -n "$ns" delete kafkatopic "scored.$profile" --wait >/dev/null
 kubectl -n "$ns" exec valkey-0 -- valkey-cli flushall >/dev/null
-helm upgrade unfraud "$chart" -n "$ns" --reuse-values --set scorer.replicas=1 >/dev/null
+helm upgrade unfraud "$chart" -n "$ns" --reset-then-reuse-values --set scorer.replicas=1 >/dev/null
 kubectl -n "$ns" wait "kafkatopic/scored.$profile" --for=condition=Ready --timeout=120s >/dev/null
 kubectl -n "$ns" rollout status "deploy/scorer-$profile" --timeout=180s >/dev/null
 

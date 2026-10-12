@@ -73,3 +73,16 @@ func TestDroppedPartitionNoLongerHoldsBack(t *testing.T) {
 		t.Fatalf("after drop got %s", got)
 	}
 }
+
+func TestSequenceBreaksEventTimeTies(t *testing.T) {
+	b := NewBuffer()
+	b.Add(0, []Item{{Partition: 0, Offset: 0, TimeMs: 5, Sequence: 3}}, 1)
+	b.Add(1, []Item{{Partition: 1, Offset: 0, TimeMs: 5, Sequence: 2}, {Partition: 1, Offset: 1, TimeMs: 5, Sequence: 4}}, 2)
+	var seq []int64
+	for _, it := range b.Next(10) {
+		seq = append(seq, it.Sequence)
+	}
+	if fmt.Sprint(seq) != "[2 3 4]" {
+		t.Fatalf("order %v, want [2 3 4]", seq)
+	}
+}

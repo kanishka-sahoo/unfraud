@@ -73,6 +73,59 @@ func (Action) EnumDescriptor() ([]byte, []int) {
 	return file_unfraud_v1_scored_proto_rawDescGZIP(), []int{0}
 }
 
+// Stage says which scoring stage made a Decision (ADR-0003).
+type Stage int32
+
+const (
+	Stage_STAGE_UNSPECIFIED Stage = 0
+	// On arrival, by the partition-parallel scorer (scored.<profile>).
+	Stage_STAGE_PROVISIONAL Stage = 1
+	// By graph-svc, with graph or flow features (revised.<profile>). For
+	// Elliptic this happens when the Event's timestep closes.
+	Stage_STAGE_REVISED Stage = 2
+)
+
+// Enum value maps for Stage.
+var (
+	Stage_name = map[int32]string{
+		0: "STAGE_UNSPECIFIED",
+		1: "STAGE_PROVISIONAL",
+		2: "STAGE_REVISED",
+	}
+	Stage_value = map[string]int32{
+		"STAGE_UNSPECIFIED": 0,
+		"STAGE_PROVISIONAL": 1,
+		"STAGE_REVISED":     2,
+	}
+)
+
+func (x Stage) Enum() *Stage {
+	p := new(Stage)
+	*p = x
+	return p
+}
+
+func (x Stage) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Stage) Descriptor() protoreflect.EnumDescriptor {
+	return file_unfraud_v1_scored_proto_enumTypes[1].Descriptor()
+}
+
+func (Stage) Type() protoreflect.EnumType {
+	return &file_unfraud_v1_scored_proto_enumTypes[1]
+}
+
+func (x Stage) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Stage.Descriptor instead.
+func (Stage) EnumDescriptor() ([]byte, []int) {
+	return file_unfraud_v1_scored_proto_rawDescGZIP(), []int{1}
+}
+
 // Scored is the scorer's Decision for one Event, written to scored.<profile>
 // with the Event's partition key.
 type Scored struct {
@@ -98,6 +151,7 @@ type Scored struct {
 	// Decision was made. Their difference is end-to-end scoring latency.
 	IngestedAtMs  int64 `protobuf:"varint,13,opt,name=ingested_at_ms,json=ingestedAtMs,proto3" json:"ingested_at_ms,omitempty"`
 	ScoredAtMs    int64 `protobuf:"varint,14,opt,name=scored_at_ms,json=scoredAtMs,proto3" json:"scored_at_ms,omitempty"`
+	Stage         Stage `protobuf:"varint,15,opt,name=stage,proto3,enum=unfraud.v1.Stage" json:"stage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -230,12 +284,19 @@ func (x *Scored) GetScoredAtMs() int64 {
 	return 0
 }
 
+func (x *Scored) GetStage() Stage {
+	if x != nil {
+		return x.Stage
+	}
+	return Stage_STAGE_UNSPECIFIED
+}
+
 var File_unfraud_v1_scored_proto protoreflect.FileDescriptor
 
 const file_unfraud_v1_scored_proto_rawDesc = "" +
 	"\n" +
 	"\x17unfraud/v1/scored.proto\x12\n" +
-	"unfraud.v1\"\xe4\x04\n" +
+	"unfraud.v1\"\x8d\x05\n" +
 	"\x06Scored\x12\x18\n" +
 	"\aprofile\x18\x01 \x01(\tR\aprofile\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\"\n" +
@@ -254,7 +315,8 @@ const file_unfraud_v1_scored_proto_rawDesc = "" +
 	"modelInput\x12$\n" +
 	"\x0eingested_at_ms\x18\r \x01(\x03R\fingestedAtMs\x12 \n" +
 	"\fscored_at_ms\x18\x0e \x01(\x03R\n" +
-	"scoredAtMs\x1a;\n" +
+	"scoredAtMs\x12'\n" +
+	"\x05stage\x18\x0f \x01(\x0e2\x11.unfraud.v1.StageR\x05stage\x1a;\n" +
 	"\rEntitiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*Y\n" +
@@ -262,7 +324,11 @@ const file_unfraud_v1_scored_proto_rawDesc = "" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eACTION_APPROVE\x10\x01\x12\x11\n" +
 	"\rACTION_REVIEW\x10\x02\x12\x10\n" +
-	"\fACTION_BLOCK\x10\x03B<Z:github.com/kanishka-sahoo/unfraud/gen/unfraud/v1;unfraudv1b\x06proto3"
+	"\fACTION_BLOCK\x10\x03*H\n" +
+	"\x05Stage\x12\x15\n" +
+	"\x11STAGE_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11STAGE_PROVISIONAL\x10\x01\x12\x11\n" +
+	"\rSTAGE_REVISED\x10\x02B<Z:github.com/kanishka-sahoo/unfraud/gen/unfraud/v1;unfraudv1b\x06proto3"
 
 var (
 	file_unfraud_v1_scored_proto_rawDescOnce sync.Once
@@ -276,23 +342,25 @@ func file_unfraud_v1_scored_proto_rawDescGZIP() []byte {
 	return file_unfraud_v1_scored_proto_rawDescData
 }
 
-var file_unfraud_v1_scored_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_unfraud_v1_scored_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_unfraud_v1_scored_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_unfraud_v1_scored_proto_goTypes = []any{
 	(Action)(0),    // 0: unfraud.v1.Action
-	(*Scored)(nil), // 1: unfraud.v1.Scored
-	nil,            // 2: unfraud.v1.Scored.EntitiesEntry
+	(Stage)(0),     // 1: unfraud.v1.Stage
+	(*Scored)(nil), // 2: unfraud.v1.Scored
+	nil,            // 3: unfraud.v1.Scored.EntitiesEntry
 }
 var file_unfraud_v1_scored_proto_depIdxs = []int32{
-	2, // 0: unfraud.v1.Scored.entities:type_name -> unfraud.v1.Scored.EntitiesEntry
+	3, // 0: unfraud.v1.Scored.entities:type_name -> unfraud.v1.Scored.EntitiesEntry
 	0, // 1: unfraud.v1.Scored.model_action:type_name -> unfraud.v1.Action
 	0, // 2: unfraud.v1.Scored.rule_action:type_name -> unfraud.v1.Action
 	0, // 3: unfraud.v1.Scored.action:type_name -> unfraud.v1.Action
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1, // 4: unfraud.v1.Scored.stage:type_name -> unfraud.v1.Stage
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_unfraud_v1_scored_proto_init() }
@@ -305,7 +373,7 @@ func file_unfraud_v1_scored_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_unfraud_v1_scored_proto_rawDesc), len(file_unfraud_v1_scored_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,

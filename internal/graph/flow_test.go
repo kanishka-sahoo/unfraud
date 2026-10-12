@@ -22,10 +22,11 @@ func TestFlowFeaturesAtPeriodClose(t *testing.T) {
 		return &unfraudv1.Envelope{EventTimeMs: 100, Payload: &unfraudv1.Envelope_Link{Link: &unfraudv1.Link{
 			Src: &unfraudv1.EntityRef{Type: "tx", Id: a}, Dst: &unfraudv1.EntityRef{Type: "tx", Id: b}}}}
 	}
-	// a -> b -> c, a -> d; e is isolated.
+	// a -> b -> c, a -> d; e is isolated. Links arrive interleaved with,
+	// and partly before, their Events, as when partitions are merged.
 	for _, env := range []*unfraudv1.Envelope{
-		node("a", 1), node("b", 2), node("c", 3), node("d", 4), node("e", 5),
-		link("a", "b"), link("b", "c"), link("a", "d"),
+		link("a", "b"), node("a", 1), link("b", "c"), node("b", 2), node("c", 3),
+		link("a", "d"), node("d", 4), node("e", 5),
 	} {
 		f.Process(env)
 	}

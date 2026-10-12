@@ -71,24 +71,25 @@ Services contain no dataset-specific logic.
                          Kubernetes (kind, local)
  replayer (Job) ─► input.<profile>: Events, Links, Watermarks, Label Releases   (Kafka, Strimzi)
                          │
-                         ▼
-   scorer ×N  ──── Valkey (feature windows, graph stats, dedup)
-     rules → LightGBM (leaves) → TreeSHAP → Decision
-     ├─► scored
-     └─► flagged ─────────────────────────────┐
-                                               ▼
-   graph-svc (single writer + standby)       case-svc ──► Postgres (CloudNativePG)
-     union-find, neighbor aggregates, Leiden   ▲   │
-     ├─► graph stats → Valkey                  │   ▼
-     ├─► ring.alerts ──────────────────────────┤  summarizer ──► OpenRouter
-     └─► revisions ─────────────────────────────┘   └─► summaries ─► case-svc
-                                                         
+         ┌───────────────┴──────────────────────────┐
+         ▼                                          ▼
+   scorer ×N (partition-parallel)             graph-svc (single writer)
+     features ⇄ Valkey (one round trip)         exact in-memory features + graph
+     model → rules → Provisional Decision       graph/flow model → Revised Decision
+     └─► scored.<profile>                       └─► revised.<profile>
+                         │                          │
+                         └──────────┬───────────────┘
+                                    ▼
+                     case-svc (stricter of the two; TreeSHAP) ──► Postgres (CloudNativePG)
+                                    │
+                         summarizer ──► OpenRouter
+                                    │
    cases-api (Go, REST + SSE) ◄── Postgres, Kafka tail, Prometheus
         ▲
    web (Next.js)
 
- Every consumer: DLQ topic · OpenTelemetry traces · Prometheus metrics
- Models ship as OCI images (ADR-0015); graph-svc snapshots go to a PVC
+ Every consumer: DLQ topic · Prometheus metrics
+ Models ship as OCI images (ADR-0015); graph-svc recovers by re-reading its input
 ```
 
 ### Services
@@ -97,7 +98,7 @@ Services contain no dataset-specific logic.
 |---|---|---|---|
 | `replayer` | Go | k8s Job, one per Replay | Runs a Profile adapter and emits in Event Time order at a speed multiplier (or as fast as possible). Emits Label Releases on the delayed schedule. |
 | `scorer` | Go | Horizontal, KEDA on consumer lag | One worker per assigned partition: feature exchange with Valkey (one round trip per Event), model, rules, **Provisional Score** and **Decision**, Shadow Model scoring. Writes `scored.<profile>`. Stateless; Contributions are left to case-svc. |
-| `graph-svc` | Go | Single writer + hot standby ([ADR-0007](./adr/0007-single-writer-graph-service.md)) | Builds Links, maintains Components and neighbor aggregates, runs Leiden on a window, emits **Ring Alerts** and **Revisions**. Snapshots to object store; rebuilds from compacted topics. |
+| `graph-svc` | Go | Single writer ([ADR-0007](./adr/0007-single-writer-graph-service.md)) | Reads every partition in Event Time order with exact in-memory feature and graph state, and writes **Revised** Decisions to `revised.<profile>` with a graph-aware model ([ADR-0017](./adr/0017-graph-svc-revises-instead-of-serving-graph-features.md)). Recovers by re-reading the input topic. |
 | `case-svc` | Go | Horizontal | Opens and updates **Cases**, computes **Contributions** (Go TreeSHAP) for flagged Events from the model input the scorer attaches, builds **Case Packets**, applies Revisions, stores everything in Postgres. |
 | `summarizer` | Go | Horizontal, rate-limited | Turns Case Packet into **Summary** via OpenRouter, runs the Grounding check, retries, sends failures to the DLQ ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md)). |
 | `cases-api` | Go | Horizontal | REST (OpenAPI) + SSE for the web app. Analyst Dispositions. Replay control (creates replayer Jobs). Model promotion. |
@@ -139,13 +140,11 @@ Latency budget (targets, to be measured): consume → Decision under 10 ms p99 i
 
 ## 7. Graph (rings)
 
-- **Attribute Links** (IEEE-CIS): Entities sharing a Device Fingerprint, email or address. Values whose degree exceeds a cap are treated as **Super-nodes** and excluded. A fixed list says which attribute types may create Links.
-- **Flow Links** (Elliptic): taken directly from the dataset.
-- **Online**: incremental union-find over a sliding window gives Components; per-Component stats are pushed to Valkey.
-- **Periodic**: Leiden on the windowed graph every few minutes of Event Time gives **Communities**. Each is scored on size, growth rate, attribute reuse and released-Label density. Those above a threshold become **Rings**, which emit Ring Alerts, which open Cases and trigger Revisions.
-- **Ring ground truth (our own definition, published):** a Component of at least 2 distinct Card UIDs, connected only through non-Super-node attribute Links, in which most Events are labeled fraud.
-- **Headline graph metric:** fraud the Ring Alerts catch *among Events whose Provisional Score was below threshold*, at a fixed analyst budget.
-- **No GNN in serving** ([ADR-0012](./adr/0012-no-gnn-in-serving.md)). The `train` CLI produces a GraphSAGE baseline on Elliptic for comparison.
+- **Attribute graph** (IEEE-CIS, `internal/graph`): cards link through shared Device Fingerprints only. Chosen on the training months: devices shared by 2–20 cards carry 9–14% fraud against 3.5% overall, while email domains and addresses are almost all Super-nodes. A device used by more than 20 cards in the 30-day window is a **Super-node** and never links. The graph is rebuilt daily in Event Time (union-find cannot delete edges) and only grows in between.
+- **Communities**: chains of shared devices still merge up to 4,336 cards into one Component, so each rebuild runs a deterministic Louvain (largest Community 749 cards). Features describe both the Component and the Community the Event joins, including other cards' released fraud Labels.
+- **Rings and Ring Alerts**: a Community with at least 3 cards, 2 of them with released fraud, flags its cards' later Events and revises their Events approved in the previous 7 days. On IEEE-CIS every policy tried lost to the model at equal alert volume on the validation month (5.1% vs 18.9% precision), so Ring Alerts are **off** for IEEE-CIS; the graph contributes through its features (PR-AUC 0.611 → 0.625). The mechanism stays for datasets where it pays.
+- **Flow graph** (Elliptic): payment Links within each timestep, complete when a Watermark closes it. At close the stream computes in/out degree, 2-hop reach and neighbour means of the 93 local features for **Revisions**. These recover the value of the dataset's 72 precomputed aggregates (PR-AUC 0.793 vs 0.792) and lift illicit F1 from 0.734 (Provisional) to 0.780 (Revised).
+- **No GNN in serving** ([ADR-0012](./adr/0012-no-gnn-in-serving.md)).
 
 ## 8. Cases and LLM Summaries ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md))
 

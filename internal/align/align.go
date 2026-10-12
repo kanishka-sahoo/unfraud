@@ -14,6 +14,7 @@ type Item struct {
 	Partition int32
 	Offset    int64
 	TimeMs    int64
+	Sequence  int64 // breaks Event Time ties across partitions; 0 if unknown
 	Value     any
 }
 
@@ -82,7 +83,7 @@ func (st *partition) frontier() int64 {
 	}
 }
 
-// Next releases up to max Items in (Event Time, partition, offset) order,
+// Next releases up to max Items in (Event Time, sequence, partition, offset) order,
 // none later than the earliest frontier across partitions.
 func (b *Buffer) Next(max int) []Item {
 	b.mu.Lock()
@@ -116,6 +117,9 @@ func (b *Buffer) Next(max int) []Item {
 func less(a, b Item) bool {
 	if a.TimeMs != b.TimeMs {
 		return a.TimeMs < b.TimeMs
+	}
+	if a.Sequence != b.Sequence {
+		return a.Sequence < b.Sequence
 	}
 	if a.Partition != b.Partition {
 		return a.Partition < b.Partition

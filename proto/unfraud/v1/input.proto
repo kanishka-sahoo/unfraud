@@ -12,6 +12,10 @@ message Envelope {
   // Event Time in Unix milliseconds. For a LabelRelease this is the release
   // time; for a Watermark it is the watermark itself.
   int64 event_time_ms = 2;
+  // Position in the replayed stream. Consumers that merge partitions break
+  // Event Time ties with it, recovering the exact original order (copies of
+  // a Watermark share one).
+  int64 sequence = 3;
 
   oneof payload {
     Event event = 10;

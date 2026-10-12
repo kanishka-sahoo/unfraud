@@ -1,0 +1,69 @@
+{{- range $profile, $image := .Values.graph.models }}
+---
+# graph-svc is a single writer (ADR-0007): exactly one replica, replaced
+# rather than rolled, so two never write Revised Decisions at once.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphsvc-{{ $profile }}
+  labels:
+    app.kubernetes.io/name: graphsvc
+    unfraud.dev/profile: {{ $profile }}
+    {{- include "unfraud.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: graphsvc
+      unfraud.dev/profile: {{ $profile }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: graphsvc
+        unfraud.dev/profile: {{ $profile }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      initContainers:
+        - name: model
+          image: {{ $image }}
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: model
+              mountPath: /out
+          resources:
+            limits: { memory: 32Mi }
+      containers:
+        - name: graphsvc
+          image: {{ $.Values.image.repository }}/graphsvc:{{ $.Values.image.tag }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - -profile={{ $profile }}
+            - -brokers={{ include "unfraud.bootstrap" $ }}
+            - -model=/model
+          env:
+            - name: GOMEMLIMIT
+              value: {{ $.Values.graph.goMemLimit | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml $.Values.graph.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+      volumes:
+        - name: model
+          emptyDir: { sizeLimit: 64Mi }
+{{- end }}
