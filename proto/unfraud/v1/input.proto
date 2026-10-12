@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package unfraud.v1;
+
+option go_package = "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1;unfraudv1";
+
+// Envelope is every record on a Profile's input topic. Events, Links,
+// Watermarks and Label Releases share one ordered stream so that their
+// relative Event Time order survives partitioning (ADR-0013).
+message Envelope {
+  string profile = 1;
+  // Event Time in Unix milliseconds. For a LabelRelease this is the release
+  // time; for a Watermark it is the watermark itself.
+  int64 event_time_ms = 2;
+
+  oneof payload {
+    Event event = 10;
+    Link link = 11;
+    Watermark watermark = 12;
+    LabelRelease label_release = 13;
+  }
+}
+
+// Event is one scorable unit: a payment in IEEE-CIS and PaySim, a Bitcoin
+// transaction node in Elliptic.
+message Event {
+  string event_id = 1;
+  // Entity type to Entity id, for example "card_uid" -> "13926_315_17501".
+  // Absent types are omitted, never sent as empty strings.
+  map<string, string> entities = 2;
+  // Identifies the Profile's feature schema that num and cat follow.
+  // Consumers must reject Events whose schema_id they don't know.
+  fixed32 schema_id = 3;
+  // Numeric features in schema order; NaN means missing.
+  repeated double num = 4;
+  // Categorical features in schema order; "" means missing.
+  repeated string cat = 5;
+}
+
+message EntityRef {
+  string type = 1;
+  string id = 2;
+}
+
+// Link is a flow Link supplied by the dataset (Elliptic). Attribute Links are
+// derived downstream from shared Entities and never appear on the input topic.
+message Link {
+  EntityRef src = 1;
+  EntityRef dst = 2;
+}
+
+// Watermark declares that no further record with an Event Time at or before
+// Envelope.event_time_ms will follow on this partition. Watermarks are written
+// to every partition of the topic.
+message Watermark {}
+
+enum Label {
+  LABEL_UNSPECIFIED = 0;
+  LABEL_FRAUD = 1;
+  LABEL_LEGIT = 2;
+}
+
+// LabelRelease makes an Event's Label visible to the engine. It is emitted at
+// the Event's Event Time plus the Profile's label delay (ADR-0004) and shares
+// the Event's partition key.
+message LabelRelease {
+  string event_id = 1;
+  Label label = 2;
+  // Event Time of the labelled Event.
+  int64 labelled_event_time_ms = 3;
+}

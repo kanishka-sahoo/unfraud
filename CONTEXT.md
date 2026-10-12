@@ -10,6 +10,10 @@ A real-time fraud detection engine. It scores payment and transfer events as the
 The full description of one dataset as the engine sees it: how raw rows become Events, which Entities exist, how they link, and which features, rules and model apply.
 _Avoid_: Tenant, domain, dataset config
 
+**Feature Schema**:
+The ordered list of numeric and categorical feature names a Profile's Events carry. Events send feature values by position in this list.
+_Avoid_: Feature set, columns
+
 **Event**:
 One scorable unit in the standard schema, carrying an event time, Entities and features. In IEEE-CIS and PaySim this is a payment; in Elliptic it is a Bitcoin transaction node.
 _Avoid_: Transaction (ambiguous across profiles), message, record

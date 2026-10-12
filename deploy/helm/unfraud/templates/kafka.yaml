@@ -1,0 +1,58 @@
+{{- $rf := min 3 .Values.kafka.replicas | int }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  labels:
+    strimzi.io/cluster: {{ .Values.kafka.name }}
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.kafka.replicas }}
+  roles: [controller, broker]
+  storage:
+    type: persistent-claim
+    size: {{ .Values.kafka.storage }}
+    deleteClaim: true
+  resources:
+    {{- toYaml .Values.kafka.resources | nindent 4 }}
+  jvmOptions:
+    -Xms: {{ .Values.kafka.heap }}
+    -Xmx: {{ .Values.kafka.heap }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Values.kafka.name }}
+  labels:
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  kafka:
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        configuration:
+          bootstrap:
+            nodePort: {{ .Values.kafka.external.bootstrapNodePort }}
+          brokers:
+            - broker: 0
+              nodePort: {{ .Values.kafka.external.brokerNodePort }}
+              advertisedHost: localhost
+              advertisedPort: {{ .Values.kafka.external.brokerNodePort }}
+    config:
+      default.replication.factor: {{ $rf }}
+      min.insync.replicas: {{ max 1 (sub $rf 1) }}
+      offsets.topic.replication.factor: {{ $rf }}
+      transaction.state.log.replication.factor: {{ $rf }}
+      transaction.state.log.min.isr: {{ max 1 (sub $rf 1) }}
+      # Replays are re-runnable inputs, not a buffer: keep them until deleted.
+      log.retention.ms: -1
+  entityOperator:
+    topicOperator:
+      resources:
+        {{- toYaml .Values.kafka.topicOperator.resources | nindent 8 }}

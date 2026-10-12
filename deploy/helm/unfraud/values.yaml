@@ -1,0 +1,48 @@
+# Defaults are the `lite` profile: everything must fit in about 4 GB of
+# cluster memory on an 8 GB machine. values-full.yaml overrides for bigger
+# machines.
+
+image:
+  repository: unfraud
+  tag: dev
+  pullPolicy: IfNotPresent
+
+kafka:
+  name: unfraud
+  replicas: 1
+  storage: 10Gi
+  heap: 512m
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { memory: 1Gi }
+  # Host access through kind's port mappings (see deploy/kind/cluster.yaml).
+  external:
+    bootstrapNodePort: 30092
+    brokerNodePort: 30093
+  topicOperator:
+    resources:
+      requests: { cpu: 50m, memory: 256Mi }
+      limits: { memory: 256Mi }
+
+# One ordered input topic per Profile (ADR-0013).
+profiles:
+  - name: ieee-cis
+    partitions: 3
+  - name: paysim
+    partitions: 3
+  - name: elliptic
+    partitions: 3
+
+# Rendered on demand by `make replay`, never by `helm install`.
+replay:
+  profile: ""
+  runId: ""
+  speed: 0
+  limit: 0
+  # The dataset root mounted into the kind node.
+  dataPath: /data
+  # Soft heap limit for the Go runtime, below the container limit.
+  goMemLimit: 400MiB
+  resources:
+    requests: { cpu: 500m, memory: 512Mi }
+    limits: { memory: 512Mi }

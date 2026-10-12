@@ -1,0 +1,15 @@
+# The `full` profile, for machines with about 16 GB of RAM.
+kafka:
+  replicas: 3
+  heap: 1g
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 2Gi }
+
+profiles:
+  - name: ieee-cis
+    partitions: 12
+  - name: paysim
+    partitions: 12
+  - name: elliptic
+    partitions: 12

@@ -20,7 +20,19 @@ Status: draft, 2026-10-12. Terms in **bold** are defined in [`CONTEXT.md`](../CO
 | Elliptic | **Graph metrics** through the full streaming pipeline | Real labeled Bitcoin flow graph (49 timesteps) |
 | PaySim | **Load testing only** | Synthetic; balance columns give away the label; origin accounts almost never repeat |
 
-What we claim is "reproducible from public data", not "real". Both Kaggle datasets forbid redistribution, so `make data` downloads them with the user's own Kaggle credentials and checks SHA-256 hashes.
+What we claim is "reproducible from public data", not "real". `make data` downloads everything with the user's own Kaggle credentials and checks SHA-256 hashes against `data/checksums.sha256`. Licences differ, and the data is never committed:
+
+- **IEEE-CIS:** Kaggle competition rules; competition use only; no redistribution. Downloading needs accepted rules and a phone-verified Kaggle account.
+- **PaySim:** CC BY-SA 4.0.
+- **Elliptic:** CC BY-NC-ND 4.0. Publishing metrics is fine; publishing modified copies of the data is not.
+
+**Event Time conventions.** None of the datasets give real calendar timestamps, so each adapter uses a documented base:
+
+| Profile | Event Time |
+|---|---|
+| IEEE-CIS | 2017-11-30 + `TransactionDT` seconds (the Kaggle community's reference date) |
+| PaySim | 2017-01-01 + `step` hours |
+| Elliptic | 2015-12-30 + (timestep − 1) × 14 days, aligned so each timestep falls in its own watermark bucket |
 
 Limitations we state openly:
 
@@ -45,13 +57,19 @@ profiles/<name>/
   labels        Label Release delay (Event Time)
 ```
 
-Every message on the wire uses one Protobuf schema: `Event{profile, event_id, event_time, entities, num_features, cat_features}`, `Link{src, dst, event_time}`, `Watermark{event_time}`, `LabelRelease{event_id, label, release_time}`. Services contain no dataset-specific logic.
+Every Profile has one ordered input topic, `input.<profile>`, carrying a Protobuf `Envelope` (`proto/unfraud/v1/input.proto`) whose payload is an `Event`, `Link`, `Watermark` or `LabelRelease` ([ADR-0013](./adr/0013-ordered-input-topic-and-feature-schema.md)):
+
+- Events, Links and Label Releases are keyed by the primary Entity (Card UID, PaySim origin, Elliptic tx). Each Watermark is copied to every partition.
+- Event features are positional: `repeated double num` (NaN = missing) and `repeated string cat` ("" = missing), in the order given by the Profile's **Feature Schema**. A `schema_id` hash lets consumers reject Events built against a different schema.
+- Label Releases come from a second cursor over the dataset that trails the first by the label delay, so the replayer's memory stays constant (PaySim peaks at 2.9M pending Labels).
+
+Services contain no dataset-specific logic.
 
 ## 4. Architecture
 
 ```
                          Kubernetes (kind, local)
- replayer (Job) ─► events / links / watermarks / labels.released    (Kafka, Strimzi)
+ replayer (Job) ─► input.<profile>: Events, Links, Watermarks, Label Releases   (Kafka, Strimzi)
                          │
                          ▼
    scorer ×N  ──── Valkey (feature windows, graph stats, dedup)
@@ -88,7 +106,7 @@ Every message on the wire uses one Protobuf schema: `Event{profile, event_id, ev
 
 ### Delivery semantics
 
-Producers are idempotent; consumers process at-least-once. Feature updates are deduplicated on `event_id` so a redelivered Event doesn't count twice. Schemas live in a schema registry (Apicurio) and use buf-managed Protobuf.
+Producers are idempotent; consumers process at-least-once. Feature updates are deduplicated on `event_id` so a redelivered Event doesn't count twice. Schemas are buf-managed Protobuf compiled into every service, with no runtime schema registry; `buf breaking` in CI is the compatibility gate ([ADR-0014](./adr/0014-no-schema-registry.md)).
 
 ## 5. Features ([ADR-0004](./adr/0004-event-time-and-label-release.md), [ADR-0005](./adr/0005-single-feature-implementation.md))
 

@@ -1,0 +1,48 @@
+{{- if .Values.replay.profile }}
+{{- $name := printf "replay-%s-%s" .Values.replay.profile (required "replay.runId is required" .Values.replay.runId) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: replayer
+    unfraud.dev/profile: {{ .Values.replay.profile }}
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: replayer
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: replayer
+          image: {{ .Values.image.repository }}/replayer:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -profile={{ .Values.replay.profile }}
+            - -data=/data
+            - -brokers={{ include "unfraud.bootstrap" . }}
+            - -speed={{ .Values.replay.speed }}
+            - -limit={{ .Values.replay.limit }}
+          env:
+            - name: GOMEMLIMIT
+              value: {{ .Values.replay.goMemLimit | quote }}
+          resources:
+            {{- toYaml .Values.replay.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      volumes:
+        - name: data
+          hostPath:
+            path: {{ .Values.replay.dataPath }}
+            type: Directory
+{{- end }}

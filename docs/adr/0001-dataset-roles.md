@@ -6,4 +6,4 @@ The three public datasets don't share Entities and differ in honesty. IEEE-CIS i
 
 - PaySim fraud metrics are never published, even though they would look impressive.
 - "How far a card moved" is limited to IEEE-CIS address changes and `dist1` deltas; there is no geo-velocity.
-- Kaggle licences forbid redistribution, so datasets are downloaded with the user's own credentials and verified by checksum.
+- Licences differ (IEEE-CIS: competition rules, no redistribution; PaySim: CC BY-SA 4.0; Elliptic: CC BY-NC-ND 4.0), so the data is never committed. `make data` downloads it with the user's own Kaggle credentials and verifies it by checksum.

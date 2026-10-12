@@ -1,0 +1,15 @@
+{{- range .Values.profiles }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: input.{{ .name }}
+  labels:
+    strimzi.io/cluster: {{ $.Values.kafka.name }}
+    {{- include "unfraud.labels" $ | nindent 4 }}
+spec:
+  partitions: {{ .partitions }}
+  replicas: {{ min 3 $.Values.kafka.replicas }}
+  config:
+    compression.type: producer
+{{- end }}
