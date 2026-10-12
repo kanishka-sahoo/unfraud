@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/valkey-io/valkey-go"
 )
@@ -25,6 +27,8 @@ type Valkey struct {
 	c      valkey.Client
 	prefix string
 	expiry string
+	// sweeping is set while a background expiry sweep runs.
+	sweeping atomic.Bool
 }
 
 // NewValkey uses keys under prefix (for example "ieee-cis:") so several
@@ -67,7 +71,7 @@ func (v *Valkey) Exchange(ctx context.Context, g Guard, qs []Query, out []Result
 	for i := range qs {
 		r, err := decode(qs[i].Kind, resps[i])
 		if err != nil {
-			return fmt.Errorf("valkey state: %s: %w", qs[i].Key, err)
+			return unavailable(fmt.Errorf("valkey state: %s: %w", qs[i].Key, err))
 		}
 		out[i] = r
 	}
@@ -78,9 +82,21 @@ func (v *Valkey) Exchange(ctx context.Context, g Guard, qs []Query, out []Result
 	if err != nil && strings.HasPrefix(err.Error(), "NOSCRIPT") {
 		// The script isn't cached yet (first call, or after a restart) and
 		// did not run, so running it now applies the updates exactly once.
-		return applyScript.Exec(ctx, v.c, keys, args).Error()
+		err = applyScript.Exec(ctx, v.c, keys, args).Error()
 	}
-	return err
+	return unavailable(err)
+}
+
+// unavailable marks connection-level failures with ErrUnavailable; Valkey's
+// own error replies (a bug, not an outage) pass through unchanged.
+func unavailable(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, isReply := valkey.IsValkeyErr(err); isReply {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrUnavailable, err)
 }
 
 func decode(kind QueryKind, resp valkey.ValkeyResult) (Result, error) {
@@ -191,7 +207,7 @@ func (v *Valkey) Apply(ctx context.Context, g Guard, us []Update) error {
 	if err != nil {
 		return err
 	}
-	return applyScript.Exec(ctx, v.c, keys, args).Error()
+	return unavailable(applyScript.Exec(ctx, v.c, keys, args).Error())
 }
 
 func (v *Valkey) applyArgs(g Guard, us []Update) ([]string, []string, error) {
@@ -233,8 +249,28 @@ end
 return #keys
 `)
 
-func (v *Valkey) Expire(ctx context.Context, now int64) error {
-	const batch = 1000
+// Expire starts a background sweep and returns at once; a sweep already
+// running absorbs the request. Expiring later never changes results
+// (expired state is invisible to queries), and a sweep over hundreds of
+// thousands of keys must not stall scoring.
+func (v *Valkey) Expire(_ context.Context, now int64) error {
+	if !v.sweeping.CompareAndSwap(false, true) {
+		return nil
+	}
+	go func() {
+		defer v.sweeping.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		v.ExpireNow(ctx, now)
+	}()
+	return nil
+}
+
+// ExpireNow sweeps synchronously, in small batches with a pause between
+// them: Valkey runs one command at a time, and a long delete script would
+// stall every scorer behind it (1,000-key batches took 14-23 ms each).
+func (v *Valkey) ExpireNow(ctx context.Context, now int64) error {
+	const batch = 100
 	for {
 		n, err := expireScript.Exec(ctx, v.c, []string{v.expiry}, []string{strconv.FormatInt(now, 10), strconv.Itoa(batch)}).AsInt64()
 		if err != nil {
@@ -242,6 +278,11 @@ func (v *Valkey) Expire(ctx context.Context, now int64) error {
 		}
 		if n < batch {
 			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Millisecond):
 		}
 	}
 }

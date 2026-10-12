@@ -1,0 +1,440 @@
+{
+ "title": "unfraud",
+ "uid": "unfraud",
+ "schemaVersion": 39,
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "refresh": "10s",
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "Scorer: Decisions per second by action",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 0
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (profile, action) (rate(unfraud_scorer_decisions_total[1m]))",
+     "legendFormat": "{{profile}} {{action}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Scorer: time to score one Event",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 0
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.5, sum by (le, profile) (rate(unfraud_scorer_process_seconds_bucket[1m])))",
+     "legendFormat": "p50 {{profile}}",
+     "refId": "A"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le, profile) (rate(unfraud_scorer_process_seconds_bucket[1m])))",
+     "legendFormat": "p99 {{profile}}",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Scorer: Event in Kafka to Decision",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.5, sum by (le, profile) (rate(unfraud_scorer_end_to_end_seconds_bucket[1m])))",
+     "legendFormat": "p50 {{profile}}",
+     "refId": "A"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le, profile) (rate(unfraud_scorer_end_to_end_seconds_bucket[1m])))",
+     "legendFormat": "p99 {{profile}}",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Degraded and dead-lettered records",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (profile) (rate(unfraud_scorer_degraded_total[1m]))",
+     "legendFormat": "degraded {{profile}}",
+     "refId": "A"
+    },
+    {
+     "expr": "sum by (profile) (rate(unfraud_scorer_dead_lettered_total[1m]))",
+     "legendFormat": "dead-lettered {{profile}}",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Shadow Model agreement",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 16
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "legendFormat": "{{profile}}",
+     "expr": "sum by (profile) (rate(unfraud_scorer_shadow_total{active=\"approve\",shadow=\"approve\"}[5m]) or rate(unfraud_scorer_shadow_total{active=\"review\",shadow=\"review\"}[5m]) or rate(unfraud_scorer_shadow_total{active=\"block\",shadow=\"block\"}[5m])) / sum by (profile) (rate(unfraud_scorer_shadow_total[5m]))"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "graph-svc: Revised Decisions per second",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 16
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (profile, action) (rate(unfraud_graphsvc_revised_total[1m]))",
+     "legendFormat": "{{profile}} {{action}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "graph-svc: Event Time reached",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 24
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "dateTimeAsIso",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "max by (profile) (unfraud_graphsvc_event_time_seconds) * 1000",
+     "legendFormat": "{{profile}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "case-svc: Decisions stored and Cases explained",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 24
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (profile, stage) (rate(unfraud_casesvc_decisions_total[1m]))",
+     "legendFormat": "{{profile}} {{stage}}",
+     "refId": "A"
+    },
+    {
+     "expr": "sum by (profile) (rate(unfraud_casesvc_contributions_total[1m]))",
+     "legendFormat": "explained {{profile}}",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Summarizer: Summaries by outcome",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 32
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (model, outcome) (rate(unfraud_summarizer_summaries_total[5m]))",
+     "legendFormat": "{{model}} {{outcome}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Summarizer: latency and cost",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 32
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.5, sum by (le, model) (rate(unfraud_summarizer_latency_seconds_bucket[5m])))",
+     "legendFormat": "p50 {{model}}",
+     "refId": "A"
+    },
+    {
+     "expr": "sum by (model) (unfraud_summarizer_cost_usd_total)",
+     "legendFormat": "total cost USD {{model}}",
+     "refId": "B"
+    }
+   ]
+  }
+ ],
+ "tags": [
+  "unfraud"
+ ]
+}

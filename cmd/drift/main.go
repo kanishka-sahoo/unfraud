@@ -42,7 +42,9 @@ type Report struct {
 	P99AbsProbDiff  float64 `json:"p99_abs_probability_diff"`
 	ActionDiffering int     `json:"action_differs"`
 	LatencyP50Ms    int64   `json:"end_to_end_latency_p50_ms"`
+	LatencyP95Ms    int64   `json:"end_to_end_latency_p95_ms"`
 	LatencyP99Ms    int64   `json:"end_to_end_latency_p99_ms"`
+	LatencyMaxMs    int64   `json:"end_to_end_latency_max_ms"`
 }
 
 func main() {
@@ -60,6 +62,7 @@ func run() error {
 		countOnly = flag.Bool("count-only", false, "print how many Decisions the Accuracy Run has and exit")
 		elapsed   = flag.Int("elapsed", 0, "System Run duration in seconds, to report throughput")
 		topicFlag = flag.String("topic", "", "topic to compare (default scored.<profile>)")
+		since     = flag.Int64("since", 0, "only Decisions made at or after this Unix time (seconds), e.g. one paced replay")
 	)
 	flag.Parse()
 	want, err := readDecisions(*decisions)
@@ -114,6 +117,9 @@ func run() error {
 			if proto.Unmarshal(r.Value, &s) != nil {
 				return
 			}
+			if s.ScoredAtMs < *since*1000 {
+				return
+			}
 			if seen[s.EventId] {
 				rep.Duplicates++
 				return
@@ -147,7 +153,9 @@ func run() error {
 		rep.MeanAbsProbDiff = sum / float64(len(diffs))
 		rep.P99AbsProbDiff = diffs[len(diffs)*99/100]
 		rep.LatencyP50Ms = lat[len(lat)/2]
+		rep.LatencyP95Ms = lat[len(lat)*95/100]
 		rep.LatencyP99Ms = lat[len(lat)*99/100]
+		rep.LatencyMaxMs = lat[len(lat)-1]
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")

@@ -8,7 +8,7 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model secrets console cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model secrets console grafana cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -83,6 +83,9 @@ secrets: ## Load the OpenRouter key from ~/.config/unfraud/openrouter_key into t
 
 console: ## Open the web console on http://localhost:3000 (port-forward; new clusters also map :30080)
 	kubectl -n $(NAMESPACE) port-forward svc/web 3000:3000
+
+grafana: ## Open Grafana on http://localhost:3001
+	kubectl -n $(NAMESPACE) port-forward svc/grafana 3001:3000
 
 cluster-up: ## Create the kind cluster and install operators
 	./deploy/kind/up.sh

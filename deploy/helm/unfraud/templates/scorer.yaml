@@ -33,6 +33,18 @@ spec:
               mountPath: /out
           resources:
             limits: { memory: 32Mi }
+        {{- with index ($.Values.scorer.shadowModels | default dict) $profile }}
+        # A Shadow Model scores alongside but is never acted on.
+        - name: shadow-model
+          image: {{ . }}
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "mkdir -p /out/shadow && cp /model/* /out/shadow/"]
+          volumeMounts:
+            - name: model
+              mountPath: /out
+          resources:
+            limits: { memory: 32Mi }
+        {{- end }}
       containers:
         - name: scorer
           image: {{ $.Values.image.repository }}/scorer:{{ $.Values.image.tag }}
@@ -43,6 +55,9 @@ spec:
             - -valkey=valkey:6379
             - -model=/model
             - -align={{ ne (toString $.Values.scorer.align) "false" }}
+            {{- if index ($.Values.scorer.shadowModels | default dict) $profile }}
+            - -shadow-model=/model/shadow
+            {{- end }}
           env:
             - name: GOMEMLIMIT
               value: {{ $.Values.scorer.goMemLimit | quote }}

@@ -5,6 +5,7 @@ package scoring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -23,6 +24,9 @@ import (
 type Config struct {
 	BlockBudget  string
 	ReviewBudget string
+	// ShadowDir, when set, loads a Shadow Model that scores every Event
+	// alongside the active one; its Decisions are recorded, never acted on.
+	ShadowDir string
 }
 
 var DefaultConfig = Config{BlockBudget: "0.005", ReviewBudget: "0.02"}
@@ -41,6 +45,20 @@ type Decision struct {
 	// Input is the model input vector, kept so Contributions can be
 	// computed later for flagged Events.
 	Input []float64
+	// Degraded is set when feature state was unreachable: the model scored
+	// with every real-time feature missing, and the Event's own feature
+	// updates were lost.
+	Degraded bool
+	// Shadow is the Shadow Model's view of the same Event, if one runs.
+	Shadow *ShadowDecision
+}
+
+// ShadowDecision is what a Shadow Model would have decided. It is recorded,
+// never acted on.
+type ShadowDecision struct {
+	Version     string
+	Probability float64
+	Action      profile.Action
 }
 
 // RingMember is the Reason Code for Events whose Node belongs to an active Ring.
@@ -75,6 +93,10 @@ type Scorer struct {
 	// flow features; nil otherwise.
 	waiting map[string]waitingEvent
 	closed  []*Decision
+
+	shadow                    *model.Model
+	shadowVersion             string
+	shadowBlock, shadowReview float64
 }
 
 type waitingEvent struct {
@@ -103,6 +125,20 @@ func New(p profile.Profile, st features.State, modelDir string, cfg Config, opts
 		return nil, err
 	}
 	s := &Scorer{p: p, eng: eng, m: m, rules: rs, ringOf: map[string]string{}, approved: map[string][]approval{}}
+	if cfg.ShadowDir != "" {
+		if s.shadow, err = model.Load(cfg.ShadowDir, p.Schema, append(eng.Columns(), eng.FlowColumns()...)); err != nil {
+			return nil, fmt.Errorf("shadow model: %w", err)
+		}
+		if s.shadowVersion, err = ModelVersion(cfg.ShadowDir); err != nil {
+			return nil, err
+		}
+		if s.shadowBlock, err = s.shadow.Threshold(cfg.BlockBudget); err != nil {
+			return nil, err
+		}
+		if s.shadowReview, err = s.shadow.Threshold(cfg.ReviewBudget); err != nil {
+			return nil, err
+		}
+	}
 	for _, c := range eng.FlowColumns() {
 		if slices.Contains(m.Features, c) {
 			s.waiting = map[string]waitingEvent{}
@@ -131,6 +167,18 @@ func (s *Scorer) Model() *model.Model { return s.m }
 // otherwise.
 func (s *Scorer) Process(ctx context.Context, env *unfraudv1.Envelope) (*Decision, error) {
 	rt, err := s.eng.Process(ctx, env)
+	degraded := false
+	if errors.Is(err, features.ErrUnavailable) {
+		// Keep deciding without real-time features rather than stop.
+		if env.GetEvent() == nil {
+			return nil, nil
+		}
+		degraded, err = true, nil
+		rt = make([]float64, len(s.eng.Columns()))
+		for i := range rt {
+			rt[i] = math.NaN()
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +207,11 @@ func (s *Scorer) Process(ctx context.Context, env *unfraudv1.Envelope) (*Decisio
 		s.waiting[ev.EventId] = waitingEvent{env: env, rt: rt}
 		return nil, nil
 	}
-	return s.decide(env, rt)
+	d, err := s.decide(env, rt)
+	if d != nil {
+		d.Degraded = degraded
+	}
+	return d, err
 }
 
 // Closed returns Decisions for Events whose period closed since the last
@@ -200,6 +252,19 @@ func (s *Scorer) decide(env *unfraudv1.Envelope, rt []float64) (*Decision, error
 	d.Action = max(d.ModelAction, d.RuleAction)
 	if d.Action == profile.Approve && node != "" {
 		s.approved[node] = append(s.approved[node], approval{ev.EventId, env.EventTimeMs})
+	}
+	if s.shadow != nil {
+		x := make([]float64, len(s.shadow.Features))
+		s.shadow.Encode(x, ev.Num, ev.Cat, rt)
+		p := 1 / (1 + math.Exp(-s.shadow.Trees.Raw(x)))
+		sd := &ShadowDecision{Version: s.shadowVersion, Probability: p}
+		switch {
+		case p > s.shadowBlock:
+			sd.Action = profile.Block
+		case p > s.shadowReview:
+			sd.Action = profile.Review
+		}
+		d.Shadow = sd
 	}
 	return d, nil
 }

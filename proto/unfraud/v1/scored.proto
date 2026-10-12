@@ -50,4 +50,13 @@ message Scored {
   int64 scored_at_ms = 14;
 
   Stage stage = 15;
+
+  // Feature state was unreachable: the model scored with every real-time
+  // feature missing.
+  bool degraded = 16;
+
+  // A Shadow Model's view of the same Event: recorded, never acted on.
+  string shadow_model_version = 17;
+  double shadow_probability = 18;
+  Action shadow_action = 19;
 }

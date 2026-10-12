@@ -149,11 +149,18 @@ type Scored struct {
 	ModelInput []float64 `protobuf:"fixed64,12,rep,packed,name=model_input,json=modelInput,proto3" json:"model_input,omitempty"`
 	// Wall-clock milliseconds: when the input record was produced, and when the
 	// Decision was made. Their difference is end-to-end scoring latency.
-	IngestedAtMs  int64 `protobuf:"varint,13,opt,name=ingested_at_ms,json=ingestedAtMs,proto3" json:"ingested_at_ms,omitempty"`
-	ScoredAtMs    int64 `protobuf:"varint,14,opt,name=scored_at_ms,json=scoredAtMs,proto3" json:"scored_at_ms,omitempty"`
-	Stage         Stage `protobuf:"varint,15,opt,name=stage,proto3,enum=unfraud.v1.Stage" json:"stage,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	IngestedAtMs int64 `protobuf:"varint,13,opt,name=ingested_at_ms,json=ingestedAtMs,proto3" json:"ingested_at_ms,omitempty"`
+	ScoredAtMs   int64 `protobuf:"varint,14,opt,name=scored_at_ms,json=scoredAtMs,proto3" json:"scored_at_ms,omitempty"`
+	Stage        Stage `protobuf:"varint,15,opt,name=stage,proto3,enum=unfraud.v1.Stage" json:"stage,omitempty"`
+	// Feature state was unreachable: the model scored with every real-time
+	// feature missing.
+	Degraded bool `protobuf:"varint,16,opt,name=degraded,proto3" json:"degraded,omitempty"`
+	// A Shadow Model's view of the same Event: recorded, never acted on.
+	ShadowModelVersion string  `protobuf:"bytes,17,opt,name=shadow_model_version,json=shadowModelVersion,proto3" json:"shadow_model_version,omitempty"`
+	ShadowProbability  float64 `protobuf:"fixed64,18,opt,name=shadow_probability,json=shadowProbability,proto3" json:"shadow_probability,omitempty"`
+	ShadowAction       Action  `protobuf:"varint,19,opt,name=shadow_action,json=shadowAction,proto3,enum=unfraud.v1.Action" json:"shadow_action,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Scored) Reset() {
@@ -291,12 +298,40 @@ func (x *Scored) GetStage() Stage {
 	return Stage_STAGE_UNSPECIFIED
 }
 
+func (x *Scored) GetDegraded() bool {
+	if x != nil {
+		return x.Degraded
+	}
+	return false
+}
+
+func (x *Scored) GetShadowModelVersion() string {
+	if x != nil {
+		return x.ShadowModelVersion
+	}
+	return ""
+}
+
+func (x *Scored) GetShadowProbability() float64 {
+	if x != nil {
+		return x.ShadowProbability
+	}
+	return 0
+}
+
+func (x *Scored) GetShadowAction() Action {
+	if x != nil {
+		return x.ShadowAction
+	}
+	return Action_ACTION_UNSPECIFIED
+}
+
 var File_unfraud_v1_scored_proto protoreflect.FileDescriptor
 
 const file_unfraud_v1_scored_proto_rawDesc = "" +
 	"\n" +
 	"\x17unfraud/v1/scored.proto\x12\n" +
-	"unfraud.v1\"\x8d\x05\n" +
+	"unfraud.v1\"\xc3\x06\n" +
 	"\x06Scored\x12\x18\n" +
 	"\aprofile\x18\x01 \x01(\tR\aprofile\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\"\n" +
@@ -316,7 +351,11 @@ const file_unfraud_v1_scored_proto_rawDesc = "" +
 	"\x0eingested_at_ms\x18\r \x01(\x03R\fingestedAtMs\x12 \n" +
 	"\fscored_at_ms\x18\x0e \x01(\x03R\n" +
 	"scoredAtMs\x12'\n" +
-	"\x05stage\x18\x0f \x01(\x0e2\x11.unfraud.v1.StageR\x05stage\x1a;\n" +
+	"\x05stage\x18\x0f \x01(\x0e2\x11.unfraud.v1.StageR\x05stage\x12\x1a\n" +
+	"\bdegraded\x18\x10 \x01(\bR\bdegraded\x120\n" +
+	"\x14shadow_model_version\x18\x11 \x01(\tR\x12shadowModelVersion\x12-\n" +
+	"\x12shadow_probability\x18\x12 \x01(\x01R\x11shadowProbability\x127\n" +
+	"\rshadow_action\x18\x13 \x01(\x0e2\x12.unfraud.v1.ActionR\fshadowAction\x1a;\n" +
 	"\rEntitiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*Y\n" +
@@ -356,11 +395,12 @@ var file_unfraud_v1_scored_proto_depIdxs = []int32{
 	0, // 2: unfraud.v1.Scored.rule_action:type_name -> unfraud.v1.Action
 	0, // 3: unfraud.v1.Scored.action:type_name -> unfraud.v1.Action
 	1, // 4: unfraud.v1.Scored.stage:type_name -> unfraud.v1.Stage
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	0, // 5: unfraud.v1.Scored.shadow_action:type_name -> unfraud.v1.Action
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_unfraud_v1_scored_proto_init() }

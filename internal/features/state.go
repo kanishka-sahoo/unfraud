@@ -1,6 +1,13 @@
 package features
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrUnavailable wraps State failures that mean the store could not be
+// reached, as opposed to a malformed request. Scorers degrade on it.
+var ErrUnavailable = errors.New("feature state unavailable")
 
 // QueryKind selects what a Query reads.
 type QueryKind uint8

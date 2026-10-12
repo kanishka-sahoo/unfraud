@@ -27,6 +27,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	unfraudv1 "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1"
+	"github.com/kanishka-sahoo/unfraud/internal/dlq"
 	"github.com/kanishka-sahoo/unfraud/internal/model"
 	"github.com/kanishka-sahoo/unfraud/internal/scoring"
 	"github.com/kanishka-sahoo/unfraud/internal/store"
@@ -115,7 +116,8 @@ func run(log *slog.Logger) error {
 		fetches.EachRecord(func(r *kgo.Record) {
 			s := &unfraudv1.Scored{}
 			if err := proto.Unmarshal(r.Value, s); err != nil {
-				log.Error("undecodable decision skipped", "topic", r.Topic, "offset", r.Offset, "err", err)
+				log.Error("decision dead-lettered", "topic", r.Topic, "offset", r.Offset, "err", err)
+				dlq.Send(ctx, cl, *profile, "casesvc", r, err)
 				return
 			}
 			batch = append(batch, s)

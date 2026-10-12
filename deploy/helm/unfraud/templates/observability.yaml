@@ -1,0 +1,167 @@
+{{- if .Values.observability.enabled }}
+# Prometheus scrapes pods annotated prometheus.io/scrape in this namespace;
+# Grafana ships one dashboard (dashboards/unfraud.json). Open it with
+# `make grafana`.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+subjects: [{ kind: ServiceAccount, name: prometheus }]
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: prometheus }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 10s
+    scrape_configs:
+      - job_name: pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: { names: [{{ .Release.Namespace }}] }
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: (.+);(.+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app.kubernetes.io/name: prometheus } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: prometheus }
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: {{ .Values.observability.prometheusImage }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ .Values.observability.retention }}
+          ports: [{ name: http, containerPort: 9090 }]
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus }
+            - { name: data, mountPath: /prometheus }
+      volumes:
+        - name: config
+          configMap: { name: prometheus }
+        - name: data
+          emptyDir: { sizeLimit: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/name: prometheus }
+  ports: [{ name: http, port: 9090 }]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        url: http://prometheus:9090
+        isDefault: true
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: unfraud
+        type: file
+        options: { path: /var/lib/grafana/dashboards }
+  unfraud.json: |
+{{ .Files.Get "dashboards/unfraud.json" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: grafana } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: grafana }
+    spec:
+      containers:
+        - name: grafana
+          image: {{ .Values.observability.grafanaImage }}
+          env:
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer }
+            - { name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: /var/lib/grafana/dashboards/unfraud.json }
+            - { name: GF_ANALYTICS_REPORTING_ENABLED, value: "false" }
+          ports: [{ name: http, containerPort: 3000 }]
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasources.yaml, subPath: datasources.yaml }
+            - { name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml }
+            - { name: provisioning, mountPath: /var/lib/grafana/dashboards/unfraud.json, subPath: unfraud.json }
+      volumes:
+        - name: provisioning
+          configMap: { name: grafana-provisioning }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/name: grafana }
+  ports: [{ name: http, port: 3000 }]
+{{- end }}

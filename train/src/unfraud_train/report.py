@@ -46,6 +46,7 @@ def decisions_section(models: Path, features: Path | None) -> tuple[list[str], d
 
 
 def system_run_section(out: Path) -> list[str]:
+    prefix = out.name.split("-lightgbm")[0]
     runs = {}
     for variant, label in (("aligned", "Aligned (ADR-0016)"), ("unaligned", "Unaligned (control)")):
         p = out.parent / f"{out.name.split('-lightgbm')[0]}-system-run-{variant}.json"
@@ -70,6 +71,51 @@ def system_run_section(out: Path) -> list[str]:
             f"{r['mean_abs_probability_diff']:.2e} | {r['p99_abs_probability_diff']:.2e} | "
             f"{r['max_abs_probability_diff']:.3f} | {r['action_differs']:,} of {r['compared']:,} |"
         )
+    final = {stage: out.parent / f"{prefix}-system-run-final-{stage}.json" for stage in ("scorer", "graphsvc")}
+    if all(f.exists() for f in final.values()):
+        sc, gs = (json.loads(f.read_text()) for f in final.values())
+        lines += [
+            "",
+            "Full pipeline in the cluster (scorer with a Shadow Model, graph-svc, case-svc, summarizer, Prometheus and "
+            "Grafana all running, about 3.7 GB):",
+            "",
+            "| Stage | Decisions compared | Probabilities differing | Decisions differing |",
+            "|---|---|---|---|",
+            f"| Provisional (scorer, aligned) | {sc['compared']:,} | {sc['probability_differs'] / sc['compared']:.2%} | {sc['action_differs']:,} |",
+            f"| Revised (graph-svc, single writer) | {gs['compared']:,} | {gs['probability_differs'] / gs['compared']:.2%} | {gs['action_differs']:,} |",
+        ]
+    lat = {stage: out.parent / f"{prefix}-latency-{stage}.json" for stage in ("scored", "revised")}
+    if all(f.exists() for f in lat.values()):
+        lines += [
+            "",
+            "### End-to-end latency (live-paced replay)",
+            "",
+            "The first 60,000 IEEE-CIS Events replayed at about 200 a second, timed from the Event entering Kafka to its "
+            "Decision being produced, with the full pipeline running and the scorer also evaluating its Shadow Model. "
+            "Scoring itself takes 3.6 ms at p50 and 11 ms at p95; the rest of the scorer's tail is time records wait for "
+            "Event Time alignment across partitions (with alignment off, p95 was 142 ms but Decision drift is 16 times "
+            "higher, ADR-0016). Expiry sweeps run in the background in 100-key batches so they never stall scoring.",
+            "",
+            "| Stage | Decisions | p50 | p95 | p99 | max |",
+            "|---|---|---|---|---|---|",
+        ]
+        for stage, label in (("scored", "Provisional (scorer)"), ("revised", "Revised (graph-svc)")):
+            r = json.loads(lat[stage].read_text())
+            lines.append(f"| {label} | {r['compared']:,} | {r['end_to_end_latency_p50_ms']} ms | {r['end_to_end_latency_p95_ms']} ms | "
+                         f"{r['end_to_end_latency_p99_ms']} ms | {r['end_to_end_latency_max_ms']} ms |")
+    shadow = out.parent / f"{prefix}-shadow.json"
+    if shadow.exists():
+        sh = json.loads(shadow.read_text())
+        total = sum(sh["counts"].values())
+        agree = sum(v for k, v in sh["counts"].items() if k.split("/")[0] == k.split("/")[1])
+        lines += ["", "### Shadow Model", "",
+                  f"{sh['shadow']} scored every Event beside the served model ({sh['active']}). They chose the same "
+                  f"action for {agree / total:.2%} of {total:,} Events.", "",
+                  "| Served → Shadow | Events |", "|---|---|"]
+        for k, v in sorted(sh["counts"].items(), key=lambda kv: -kv[1]):
+            a, b = k.split("/")
+            if a != b:
+                lines.append(f"| {a} → {b} | {v:,} |")
     return lines
 
 

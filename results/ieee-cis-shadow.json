@@ -1,0 +1,10 @@
+{
+  "active": "lgbm-realtime (depth 10, 237 trees)",
+  "shadow": "lgbm-realtime-uncapped (1,414 trees)",
+  "source": "Prometheus unfraud_scorer_shadow_total after the final System Run",
+  "counts": {
+    "approve/approve": 571873, "approve/review": 3490,
+    "block/block": 4572, "block/review": 632,
+    "review/review": 8428, "review/block": 1013, "review/approve": 532
+  }
+}

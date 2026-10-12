@@ -202,16 +202,18 @@ We also report how much the IEEE-CIS results fall short of the Kaggle leaderboar
 
 ## 11. Deployment: local Kubernetes only ([ADR-0010](./adr/0010-local-kubernetes-only.md))
 
-- **kind** cluster with a local image registry; **Tilt** for the inner dev loop; one umbrella **Helm** chart.
-- **Operators for stateful parts:** Strimzi (Kafka in KRaft mode, 3 brokers), CloudNativePG (Postgres). Valkey runs as a plain StatefulSet.
-- **Observability:** kube-prometheus-stack, OpenTelemetry Collector → Tempo, Grafana dashboards shipped in the chart.
-- **Valkey** holds feature state with append-only persistence and `noeviction`; expiry is in Event Time through an index sorted set, never wall-clock TTLs.
-- **KEDA** scales the scorer on Kafka consumer lag.
-- Two values profiles. **`lite` is the default.** The reference machine has 8 GB RAM, and after the OS and dev tools about 5 GB is free.
-  - `lite` must fit in **about 4 GB of cluster memory**: single-node kind, 1 Kafka broker with a 512 MB heap, Postgres and Valkey with small limits, plain Prometheus + Grafana (no kube-prometheus-stack, Tempo off, traces sampled to stdout), no KEDA, no standby graph-svc, one scorer replica. Every pod has a memory limit, and the chart's total is checked in CI.
-  - `full` (3 brokers, KEDA, Tempo, standby graph-svc, about 16 GB target) is for bigger machines. Published System Run numbers come from `lite` on the 4-core, 8 GB reference machine and say so. `full` is supported and tested for correctness, but we don't publish performance numbers for hardware we haven't measured.
-  - Model training runs outside the cluster, with the cluster scaled down, so the cluster and the training job never compete for memory.
-- Secrets (OpenRouter key, Kaggle credentials) are Kubernetes Secrets created by `make secrets`. Nothing leaves the machine except calls to OpenRouter.
+What is built and runs on the 4-core, 8 GB reference machine (`lite`, the default values):
+
+- **kind** single-node cluster (`make cluster-up`), images loaded with `kind load` rather than a registry, one Helm chart (`make deploy`, `make deploy-model`).
+- **Operators:** Strimzi (Kafka 4.3 in KRaft mode, one broker with a 512 MB heap) and CloudNativePG (one Postgres instance). Valkey is a plain StatefulSet with append-only persistence and `noeviction`; its expiry is in Event Time, never wall-clock TTLs.
+- **Services:** scorer and graph-svc per Profile (one replica each), case-svc per Profile, one summarizer, cases-api, and the web console (NodePort 30080 on new clusters, `make console` on older ones).
+- **Failure handling:** idempotent producers, at-least-once consumers with idempotency Guards on feature state; records that cannot be processed go to `dlq.<profile>` with the error and origin in headers; when Valkey is unreachable the scorer keeps deciding with real-time features missing and marks Decisions `degraded`; graph-svc recovers by re-reading its input. An optional **Shadow Model** scores every Event beside the active one (recorded, never acted on).
+- **Observability:** Prometheus (pods opt in with `prometheus.io/scrape`, 12-hour retention) and Grafana with a provisioned dashboard (`make grafana`): throughput and latency per Stage, degraded and dead-lettered records, Shadow agreement, graph-svc progress, case-svc and summarizer. Kafka and Valkey internals are not scraped.
+- Every pod has a memory limit. With the full IEEE-CIS pipeline running, the cluster uses about 3.7 GB.
+- Secrets (the OpenRouter key) are Kubernetes Secrets created by `make secrets`. Nothing leaves the machine except calls to OpenRouter.
+- Model training runs outside the cluster.
+
+Not built, because none of it could be validated on the reference machine: KEDA autoscaling, a hot-standby graph-svc (graph-svc is a single replica with `Recreate` rollouts and recovers by recomputation instead), OpenTelemetry tracing, and Tilt. `values-full.yaml` raises broker count and partitions but has not been run. Published System Run numbers come from `lite` on the reference machine.
 
 ## 12. Repo layout
 
@@ -230,6 +232,8 @@ Makefile        data, secrets, up, train, bench-accuracy, bench-system, e2e
 ```
 
 ## 13. Milestones
+
+All seven are done; see `git log` for what each delivered.
 
 1. **Data foundations:** Profiles, Protobuf schema, replayer, kind + Strimzi, checksummed `make data`.
 2. **Features:** feature engine, Accuracy Run replay to Parquet, first IEEE-CIS model, parity tests in CI.

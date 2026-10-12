@@ -29,6 +29,7 @@ import (
 
 	unfraudv1 "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1"
 	"github.com/kanishka-sahoo/unfraud/internal/align"
+	"github.com/kanishka-sahoo/unfraud/internal/dlq"
 	"github.com/kanishka-sahoo/unfraud/internal/features"
 	"github.com/kanishka-sahoo/unfraud/internal/profile"
 	"github.com/kanishka-sahoo/unfraud/internal/profile/registry"
@@ -46,6 +47,15 @@ var (
 		Name: "unfraud_scorer_process_seconds", Help: "Time to score one Event inside the scorer.",
 		Buckets: prometheus.ExponentialBuckets(0.0001, 2, 16),
 	}, []string{"profile"})
+	degradedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "unfraud_scorer_degraded_total", Help: "Events scored without real-time features (state unreachable).",
+	}, []string{"profile"})
+	deadLettered = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "unfraud_scorer_dead_lettered_total", Help: "Records sent to the dead-letter topic.",
+	}, []string{"profile"})
+	shadowAgreement = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "unfraud_scorer_shadow_total", Help: "Shadow Model decisions by active and shadow model action.",
+	}, []string{"profile", "active", "shadow"})
 	endToEndSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "unfraud_scorer_end_to_end_seconds", Help: "Input produced to Decision made (wall clock).",
 		Buckets: prometheus.ExponentialBuckets(0.001, 2, 16),
@@ -69,6 +79,7 @@ func run(log *slog.Logger) error {
 		group       = flag.String("group", "", "consumer group (default scorer.<profile>)")
 		listen      = flag.String("listen", ":8080", "address for /metrics, /healthz and /readyz")
 		aligned     = flag.Bool("align", true, "align partitions in Event Time (false only to measure its effect)")
+		shadowDir   = flag.String("shadow-model", "", "Shadow Model folder, scored alongside but never acted on")
 	)
 	flag.Parse()
 	p, err := registry.Get(*profileName)
@@ -100,7 +111,11 @@ func run(log *slog.Logger) error {
 		kgo.ConsumerGroup(*group),
 		kgo.ConsumeTopics(in),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		// Offsets of scored records are marked after their Decisions are
+		// flushed and committed in the background; a crash redelivers at
+		// most about a second of records, which the feature Guards absorb.
 		kgo.AutoCommitMarks(),
+		kgo.AutoCommitInterval(time.Second),
 		kgo.BlockRebalanceOnPoll(),
 		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, lost map[string][]int32) {
 			for _, ps := range lost {
@@ -140,15 +155,19 @@ func run(log *slog.Logger) error {
 	}
 	close(readyCh)
 
+	cfg := scoring.DefaultConfig
+	cfg.ShadowDir = *shadowDir
 	s := &service{
-		log: log, p: p, cl: cl, state: state, modelDir: *modelDir, version: version,
+		log: log, p: p, cl: cl, state: state, modelDir: *modelDir, version: version, cfg: cfg,
 		workers: map[int32]*scoring.Scorer{},
 	}
 	log.Info("scorer starting", "profile", p.Name, "input", in, "output", out, "group", *group, "model", version)
 	for {
 		fetches := cl.PollFetches(ctx)
 		if fetches.IsClientClosed() || ctx.Err() != nil {
-			return nil
+			final, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return cl.CommitMarkedOffsets(final)
 		}
 		if err := fetches.Err0(); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -167,7 +186,7 @@ func run(log *slog.Logger) error {
 			for _, r := range ftp.Records {
 				t, seq, err := ordering(r.Value)
 				if err != nil {
-					log.Error("undecodable record skipped", "partition", r.Partition, "offset", r.Offset, "err", err)
+					s.deadLetter(ctx, r, err)
 					continue
 				}
 				items = append(items, align.Item{Partition: r.Partition, Offset: r.Offset, TimeMs: t, Sequence: seq, Value: r})
@@ -198,9 +217,6 @@ func run(log *slog.Logger) error {
 			return err
 		}
 		cl.MarkCommitRecords(done...)
-		if err := cl.CommitMarkedOffsets(ctx); err != nil {
-			return err
-		}
 		// Bound memory: stop fetching partitions that already have plenty
 		// buffered, usually because another partition is holding them back.
 		var pause, resume []int32
@@ -266,6 +282,7 @@ type service struct {
 	state    features.State
 	modelDir string
 	version  string
+	cfg      scoring.Config
 
 	mu      sync.Mutex
 	workers map[int32]*scoring.Scorer
@@ -277,7 +294,7 @@ func (s *service) worker(partition int32) (*scoring.Scorer, error) {
 	if w, ok := s.workers[partition]; ok {
 		return w, nil
 	}
-	w, err := scoring.New(s.p, s.state, s.modelDir, scoring.DefaultConfig)
+	w, err := scoring.New(s.p, s.state, s.modelDir, s.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -316,12 +333,14 @@ func (s *service) partition(ctx context.Context, partition int32, recs []*kgo.Re
 	for _, r := range recs {
 		env := &unfraudv1.Envelope{}
 		if err := proto.Unmarshal(r.Value, env); err != nil {
-			return fmt.Errorf("offset %d: %w", r.Offset, err)
+			s.deadLetter(ctx, r, err)
+			continue
 		}
 		start := time.Now()
 		d, err := sc.Process(ctx, env)
 		if err != nil {
-			return fmt.Errorf("offset %d: %w", r.Offset, err)
+			s.deadLetter(ctx, r, err)
+			continue
 		}
 		records.WithLabelValues(s.p.Name, kind(env)).Inc()
 		if d == nil {
@@ -331,6 +350,12 @@ func (s *service) partition(ctx context.Context, partition int32, recs []*kgo.Re
 		processSeconds.WithLabelValues(s.p.Name).Observe(now.Sub(start).Seconds())
 		endToEndSeconds.WithLabelValues(s.p.Name).Observe(now.Sub(r.Timestamp).Seconds())
 		decisions.WithLabelValues(s.p.Name, d.Action.String()).Inc()
+		if d.Degraded {
+			degradedTotal.WithLabelValues(s.p.Name).Inc()
+		}
+		if d.Shadow != nil {
+			shadowAgreement.WithLabelValues(s.p.Name, d.ModelAction.String(), d.Shadow.Action.String()).Inc()
+		}
 
 		b, err := proto.Marshal(scoring.Proto(s.p.Name, s.version, unfraudv1.Stage_STAGE_PROVISIONAL, d, r.Timestamp, now))
 		if err != nil {
@@ -343,6 +368,13 @@ func (s *service) partition(ctx context.Context, partition int32, recs []*kgo.Re
 		})
 	}
 	return nil
+}
+
+// deadLetter parks a record the scorer cannot process and moves on.
+func (s *service) deadLetter(ctx context.Context, r *kgo.Record, err error) {
+	s.log.Error("record dead-lettered", "partition", r.Partition, "offset", r.Offset, "err", err)
+	deadLettered.WithLabelValues(s.p.Name).Inc()
+	dlq.Send(ctx, s.cl, s.p.Name, "scorer", r, err)
 }
 
 func kind(env *unfraudv1.Envelope) string {

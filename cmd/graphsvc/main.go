@@ -33,6 +33,7 @@ import (
 
 	unfraudv1 "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1"
 	"github.com/kanishka-sahoo/unfraud/internal/align"
+	"github.com/kanishka-sahoo/unfraud/internal/dlq"
 	"github.com/kanishka-sahoo/unfraud/internal/features"
 	"github.com/kanishka-sahoo/unfraud/internal/profile/registry"
 	"github.com/kanishka-sahoo/unfraud/internal/scoring"
@@ -166,7 +167,8 @@ func run(log *slog.Logger) error {
 			for _, r := range ftp.Records {
 				env := &unfraudv1.Envelope{}
 				if err := proto.Unmarshal(r.Value, env); err != nil {
-					log.Error("undecodable record skipped", "partition", r.Partition, "offset", r.Offset, "err", err)
+					log.Error("record dead-lettered", "partition", r.Partition, "offset", r.Offset, "err", err)
+					dlq.Send(ctx, cl, p.Name, "graphsvc", r, err)
 					continue
 				}
 				items = append(items, align.Item{Partition: r.Partition, Offset: r.Offset, TimeMs: env.EventTimeMs,
@@ -198,8 +200,13 @@ func run(log *slog.Logger) error {
 				live := in.rec.Offset >= committed[in.rec.Partition]
 				d, err := sc.Process(ctx, in.env)
 				if err != nil {
-					mu.Unlock()
-					return fmt.Errorf("partition %d offset %d: %w", in.rec.Partition, in.rec.Offset, err)
+					// Park it and carry on; state skips this one record.
+					log.Error("record dead-lettered", "partition", in.rec.Partition, "offset", in.rec.Offset, "err", err)
+					if live {
+						dlq.Send(ctx, cl, p.Name, "graphsvc", in.rec, err)
+					}
+					next[in.rec.Partition] = in.rec.Offset + 1
+					continue
 				}
 				lastMs = in.env.EventTimeMs
 				closed := sc.Closed()

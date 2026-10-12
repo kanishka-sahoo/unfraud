@@ -1,5 +1,5 @@
 {{- range $p := .Values.profiles }}
-{{- range $prefix := list "input" "scored" "revised" }}
+{{- range $prefix := list "input" "scored" "revised" "dlq" }}
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic

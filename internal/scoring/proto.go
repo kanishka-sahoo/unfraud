@@ -34,6 +34,10 @@ func Proto(prof, version string, stage unfraudv1.Stage, d *Decision, ingested, n
 	if d.Action != profile.Approve {
 		out.ModelInput = d.Input
 	}
+	out.Degraded = d.Degraded
+	if d.Shadow != nil {
+		out.ShadowModelVersion, out.ShadowProbability, out.ShadowAction = d.Shadow.Version, d.Shadow.Probability, actions[d.Shadow.Action]
+	}
 	return out
 }
 

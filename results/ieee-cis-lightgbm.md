@@ -56,3 +56,30 @@ One scorer pod scoring the whole input topic from a backlog, with features in Va
 |---|---|---|---|---|---|---|
 | Aligned (ADR-0016) | 1,067 | 6.66% | 1.12e-04 | 1.65e-03 | 0.163 | 80 of 590,540 |
 | Unaligned (control) | 1,129 | 90.85% | 2.96e-03 | 5.14e-02 | 0.601 | 1,271 of 590,540 |
+
+Full pipeline in the cluster (scorer with a Shadow Model, graph-svc, case-svc, summarizer, Prometheus and Grafana all running, about 3.7 GB):
+
+| Stage | Decisions compared | Probabilities differing | Decisions differing |
+|---|---|---|---|
+| Provisional (scorer, aligned) | 590,540 | 6.70% | 77 |
+| Revised (graph-svc, single writer) | 590,540 | 0.00% | 0 |
+
+### End-to-end latency (live-paced replay)
+
+The first 60,000 IEEE-CIS Events replayed at about 200 a second, timed from the Event entering Kafka to its Decision being produced, with the full pipeline running and the scorer also evaluating its Shadow Model. Scoring itself takes 3.6 ms at p50 and 11 ms at p95; the rest of the scorer's tail is time records wait for Event Time alignment across partitions (with alignment off, p95 was 142 ms but Decision drift is 16 times higher, ADR-0016). Expiry sweeps run in the background in 100-key batches so they never stall scoring.
+
+| Stage | Decisions | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| Provisional (scorer) | 60,000 | 17 ms | 188 ms | 428 ms | 1073 ms |
+| Revised (graph-svc) | 60,000 | 7 ms | 22 ms | 65 ms | 148 ms |
+
+### Shadow Model
+
+lgbm-realtime-uncapped (1,414 trees) scored every Event beside the served model (lgbm-realtime (depth 10, 237 trees)). They chose the same action for 99.04% of 590,540 Events.
+
+| Served → Shadow | Events |
+|---|---|
+| approve → review | 3,490 |
+| review → block | 1,013 |
+| block → review | 632 |
+| review → approve | 532 |

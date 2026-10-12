@@ -51,6 +51,8 @@ scorer:
     limits: { memory: 256Mi }
   # Profile -> model image. A scorer runs for each entry (set by `make deploy-model`).
   models: {}
+  # Profile -> Shadow Model image, scored alongside and never acted on.
+  shadowModels: {}
 
 postgres:
   name: cases
@@ -86,6 +88,12 @@ graph:
     limits: { memory: 768Mi }
   # Profile -> Revision model image. graph-svc runs for each entry.
   models: {}
+
+observability:
+  enabled: true
+  prometheusImage: prom/prometheus:v3.13.4
+  grafanaImage: grafana/grafana:13.2.3
+  retention: 12h
 
 web:
   # Reachable at http://localhost:30080 through kind's port mapping.
