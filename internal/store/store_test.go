@@ -128,7 +128,13 @@ func TestEqualActionsPreferTheEarlierStage(t *testing.T) {
 	// The Revised Decision is consumed first; the Provisional one, equally
 	// strict, arrives later and takes over.
 	s.UpsertCases(ctx, []Decision{dec("d", 2, 2, .99)})
+	s.SaveSummary(ctx, CaseKey{"p", "d"}, "done", map[string]string{"summary": "about the revision"})
 	need, _ := s.UpsertCases(ctx, []Decision{dec("d", 1, 2, .97)})
+	var status string
+	s.Pool.QueryRow(ctx, `SELECT summary_status FROM cases WHERE event_id = 'd'`).Scan(&status)
+	if status != "pending" {
+		t.Fatalf("summary status after takeover %q, want pending (the old Summary describes another Decision)", status)
+	}
 	var by int16
 	var version string
 	s.Pool.QueryRow(ctx, `SELECT flagged_by, model_version FROM cases WHERE event_id = 'd'`).Scan(&by, &version)

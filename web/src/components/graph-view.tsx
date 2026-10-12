@@ -24,7 +24,7 @@ export function GraphView({ profile, data }: { profile: string; data: Subgraph }
       const angle = (i / Math.max(1, data.nodes.length)) * Math.PI * 2;
       g.addNode(`${n.kind}:${n.id}`, {
         x: Math.cos(angle) * 10, y: Math.sin(angle) * 10,
-        size: n.id === data.center ? 7 : n.kind === "device" ? 3 : 4,
+        size: n.id === data.center ? 4 : n.kind === "device" ? 2 : 2.5,
         color: n.fraud ? colors.fraud : n.super_node ? colors.super : colors[n.kind],
         label: n.id === data.center || n.fraud ? n.id : undefined,
         node: n.id, kind: n.kind,

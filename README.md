@@ -5,6 +5,10 @@ A real-time fraud detection engine that runs on a laptop. Transactions stream th
 - Design: [`docs/design.md`](docs/design.md) · decisions: [`docs/adr/`](docs/adr) · vocabulary: [`CONTEXT.md`](CONTEXT.md)
 - Results: [`results/ieee-cis-lightgbm.md`](results/ieee-cis-lightgbm.md), [`results/elliptic-lightgbm.md`](results/elliptic-lightgbm.md), [`results/summaries-stub.md`](results/summaries-stub.md)
 
+![A blocked IEEE-CIS case: grounded summary, decisions from both stages, and the risk ledger from base rate to final probability](docs/screenshots/case.png)
+
+More: [overview](docs/screenshots/overview.png) · [case queue](docs/screenshots/cases.png) · [graph explorer](docs/screenshots/graph.png) · [benchmarks](docs/screenshots/benchmarks.png)
+
 ## Results
 
 **IEEE-CIS card payments** (time split; test month May 2018, 89,326 transactions, 3.49% fraud):
@@ -63,5 +67,6 @@ Summaries use a template writer unless you add an OpenRouter key: put it in `~/.
 
 - It is local-only: no authentication, one Kafka broker, one replica per service. KEDA autoscaling, a hot-standby graph service and tracing are designed but not built, because they could not be validated on the reference machine.
 - IEEE-CIS has no raw IP addresses or coordinates, so "movement" means address and distance-field changes, and only 26% of transactions carry device data for the graph.
+- The card identity is the Kaggle community's reconstruction (card1, address and first-seen day). When the address is missing it collapses unrelated cards into one identity; some of those form hundreds-of-node hubs in the graph explorer.
 - PaySim is used for load testing only; its balance columns give away the label.
 - Real-LLM summary quality has not been measured yet (no key was available while building); the grounding check and the reporting are in place.

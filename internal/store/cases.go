@@ -147,6 +147,9 @@ func (s *Store) UpsertCases(ctx context.Context, ds []Decision) ([]CaseKey, erro
 		    model_version = CASE WHEN `+takeover+` THEN EXCLUDED.model_version ELSE c.model_version END,
 		    contributions = CASE WHEN `+takeover+` THEN NULL ELSE c.contributions END,
 		    flagged_by    = CASE WHEN `+takeover+` THEN EXCLUDED.flagged_by ELSE c.flagged_by END,
+		    -- A Summary describes one Decision; a takeover makes it stale.
+		    summary        = CASE WHEN `+takeover+` THEN NULL ELSE c.summary END,
+		    summary_status = CASE WHEN `+takeover+` THEN 'pending' ELSE c.summary_status END,
 		    action        = GREATEST(c.action, EXCLUDED.action),
 		    updated_at    = now()
 		RETURNING profile, event_id, contributions IS NULL`,
