@@ -189,7 +189,7 @@ We also report how much the IEEE-CIS results fall short of the Kaggle leaderboar
 - **KEDA** scales the scorer on Kafka consumer lag.
 - Two values profiles. **`lite` is the default.** The reference machine has 8 GB RAM, and after the OS and dev tools about 5 GB is free.
   - `lite` must fit in **about 4 GB of cluster memory**: single-node kind, 1 Kafka broker with a 512 MB heap, Postgres and Valkey with small limits, plain Prometheus + Grafana (no kube-prometheus-stack, Tempo off, traces sampled to stdout), no KEDA, no standby graph-svc, one scorer replica. Every pod has a memory limit, and the chart's total is checked in CI.
-  - `full` (3 brokers, KEDA, Tempo, standby graph-svc, about 16 GB target) is for bigger machines and is the topology the System Run results should describe; results always record which profile produced them.
+  - `full` (3 brokers, KEDA, Tempo, standby graph-svc, about 16 GB target) is for bigger machines. Published System Run numbers come from `lite` on the 4-core, 8 GB reference machine and say so. `full` is supported and tested for correctness, but we don't publish performance numbers for hardware we haven't measured.
   - Model training runs outside the cluster, with the cluster scaled down, so the cluster and the training job never compete for memory.
 - Secrets (OpenRouter key, Kaggle credentials) are Kubernetes Secrets created by `make secrets`. Nothing leaves the machine except calls to OpenRouter.
 
