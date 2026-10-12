@@ -1,0 +1,3 @@
+# Two-stage scoring: Provisional Score on arrival, Revisions when graph structure changes
+
+An Event is scored once on arrival with what is known at its Event Time, and graph-svc may later emit Revisions when new structure changes its graph features (an Elliptic timestep closing, a Ring Alert on IEEE-CIS). Elliptic forces this because a node's Links are only complete when its timestep closes, and it is also how fraud that looks normal one Event at a time gets caught. The Provisional Decision is never overwritten; both stages are reported separately, along with how much later the revised decision arrives.
