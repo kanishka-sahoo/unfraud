@@ -63,3 +63,14 @@ jobs:
       - run: pnpm lint
       - run: pnpm exec next typegen && pnpm exec tsc --noEmit
       - run: pnpm build
+
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --project train --locked
+      - name: Go evaluator fixtures still match the pinned LightGBM
+        run: |
+          uv run --project train unfraud-train fixture --out internal/model/lgbm/testdata
+          git diff --exit-code internal/model/lgbm/testdata
