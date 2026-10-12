@@ -69,3 +69,30 @@ func TestRejectsUnsupportedModels(t *testing.T) {
 		}
 	}
 }
+
+func TestContributionsMatchLightGBM(t *testing.T) {
+	inputs := readCSV(t, "testdata/inputs.csv")
+	for _, name := range []string{"default", "zero_as_missing"} {
+		t.Run(name, func(t *testing.T) {
+			m, err := Load("testdata/" + name + ".txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := readCSV(t, "testdata/"+name+".contrib.csv")
+			phi := make([]float64, len(m.FeatureNames)+1)
+			for i, x := range inputs {
+				m.Contributions(x, phi)
+				var sum float64
+				for j := range phi {
+					sum += phi[j]
+					if math.Abs(phi[j]-want[i][j]) > 1e-9 {
+						t.Fatalf("input %d feature %d: SHAP %v, LightGBM %v", i, j, phi[j], want[i][j])
+					}
+				}
+				if raw := m.Raw(x); math.Abs(sum-raw) > 1e-9 {
+					t.Fatalf("input %d: contributions sum to %v, raw score %v", i, sum, raw)
+				}
+			}
+		})
+	}
+}

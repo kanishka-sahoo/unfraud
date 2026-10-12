@@ -21,8 +21,20 @@ type Manifest struct {
 	Features    []string            `json:"features"`
 	Categorical []string            `json:"categorical"`
 	Vocab       map[string][]string `json:"vocab"`
-	Threshold   float64             `json:"threshold"`
-	AlertBudget float64             `json:"alert_budget"`
+	// Budgets maps an Alert Budget ("0.005") to the probability threshold
+	// that flags that share of the validation month.
+	Budgets map[string]struct {
+		Threshold float64 `json:"threshold"`
+	} `json:"test_budgets"`
+}
+
+// Threshold returns the probability threshold for an Alert Budget.
+func (m *Manifest) Threshold(budget string) (float64, error) {
+	b, ok := m.Budgets[budget]
+	if !ok {
+		return 0, fmt.Errorf("model has no threshold for alert budget %s", budget)
+	}
+	return b.Threshold, nil
 }
 
 // Model is a loaded artifact: the trees plus the input encoding.

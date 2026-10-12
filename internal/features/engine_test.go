@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -42,7 +43,8 @@ func (x ev) env() *unfraudv1.Envelope {
 	}
 	cat := testSchema.NewCat()
 	cat[0] = x.ip
-	return profile.NewEvent("test", x.at*minute, &unfraudv1.Event{EventId: "e", Entities: ents, SchemaId: testSchema.ID, Num: num, Cat: cat})
+	id := fmt.Sprintf("%s@%d", x.card, x.at)
+	return profile.NewEvent("test", x.at*minute, &unfraudv1.Event{EventId: id, Entities: ents, SchemaId: testSchema.ID, Num: num, Cat: cat})
 }
 
 // run feeds events and returns each Event's features.
@@ -152,7 +154,7 @@ func TestFraudLabelsCountOnlyReleasedFraud(t *testing.T) {
 	e := testEngine(t, profile.Feature{Name: "fraud", Kind: profile.FraudLabels, Entity: "card", Windows: []time.Duration{24 * time.Hour}})
 	release := func(at int64, l unfraudv1.Label, card string) *unfraudv1.Envelope {
 		return &unfraudv1.Envelope{EventTimeMs: at * minute, Payload: &unfraudv1.Envelope_LabelRelease{
-			LabelRelease: &unfraudv1.LabelRelease{Label: l, Entities: map[string]string{"card": card}}}}
+			LabelRelease: &unfraudv1.LabelRelease{EventId: fmt.Sprint(at), Label: l, Entities: map[string]string{"card": card}}}}
 	}
 	got := run(t, e,
 		ev{at: 0, card: "a"}.env(),
@@ -205,4 +207,28 @@ func TestInvalidFeatureRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("unknown field accepted")
 	}
+}
+
+func TestLabelReleaseWithoutEntitiesFails(t *testing.T) {
+	e := testEngine(t, profile.Feature{Name: "fraud", Kind: profile.FraudLabels, Entity: "card", Windows: []time.Duration{24 * time.Hour}})
+	env := &unfraudv1.Envelope{EventTimeMs: 0, Payload: &unfraudv1.Envelope_LabelRelease{
+		LabelRelease: &unfraudv1.LabelRelease{EventId: "x", Label: unfraudv1.Label_LABEL_FRAUD}}}
+	if _, err := e.Process(context.Background(), env); err == nil {
+		t.Fatal("a fraud label release without entities must be rejected")
+	}
+}
+
+func TestRedeliveredRecordsUpdateStateOnce(t *testing.T) {
+	e := testEngine(t,
+		profile.Feature{Name: "n", Kind: profile.Count, Entity: "card", Windows: []time.Duration{time.Hour}},
+		profile.Feature{Name: "fraud", Kind: profile.FraudLabels, Entity: "card", Windows: []time.Duration{time.Hour}},
+	)
+	first := ev{at: 0, card: "a"}.env()
+	release := &unfraudv1.Envelope{EventTimeMs: 1 * minute, Payload: &unfraudv1.Envelope_LabelRelease{
+		LabelRelease: &unfraudv1.LabelRelease{EventId: "a@0", Label: unfraudv1.Label_LABEL_FRAUD, Entities: map[string]string{"card": "a"}}}}
+	second := ev{at: 2, card: "a"}.env()
+	got := run(t, e, first, release, first, release, second)
+	// The redelivered first Event sees its own earlier update (n=1), but
+	// neither it nor the redelivered release is counted again.
+	check(t, e.Columns(), got, [][]float64{{0, 0}, {1, 1}, {1, 1}})
 }

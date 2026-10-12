@@ -19,6 +19,7 @@ type Model struct {
 	FeatureNames []string
 	Trees        []Tree
 	sigmoid      float64
+	maxDepth     int
 }
 
 // Tree is one regression tree. Internal nodes are indexed from 0; a negative
@@ -34,6 +35,8 @@ type Tree struct {
 	InternalCount []float64
 	CatBoundaries []int
 	CatThreshold  []uint32
+
+	expected float64 // TreeSHAP expected value (bias)
 }
 
 // Decision type bits, from LightGBM's tree.h.
@@ -136,7 +139,15 @@ func (m *Model) applyHeader(h map[string]string) error {
 		}
 	}
 	m.FeatureNames = strings.Fields(h["feature_names"])
-	for i, t := range m.Trees {
+	for i := range m.Trees {
+		t := &m.Trees[i]
+		if len(t.SplitFeature) > 0 && (len(t.InternalCount) != len(t.SplitFeature) || len(t.LeafCount) != len(t.LeafValue)) {
+			return fmt.Errorf("lgbm: tree %d lacks node counts", i)
+		}
+		t.expected = t.expectedValue()
+		if len(t.SplitFeature) > 0 {
+			m.maxDepth = max(m.maxDepth, t.depth())
+		}
 		for _, f := range t.SplitFeature {
 			if f >= len(m.FeatureNames) {
 				return fmt.Errorf("lgbm: tree %d splits on feature %d of %d", i, f, len(m.FeatureNames))

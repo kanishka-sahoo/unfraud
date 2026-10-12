@@ -32,3 +32,5 @@ def write(out: Path) -> None:
         model = lgb.train({**base, **extra}, lgb.Dataset(x, y, categorical_feature=[3]), 60)
         model.save_model(out / f"{name}.txt")
         np.savetxt(out / f"{name}.expected.csv", model.predict(probe, raw_score=True), fmt="%.17g")
+        # Per-feature SHAP values, then the expected value (bias), per input.
+        np.savetxt(out / f"{name}.contrib.csv", model.predict(probe, pred_contrib=True), delimiter=",", fmt="%.17g")

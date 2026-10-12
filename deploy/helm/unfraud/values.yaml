@@ -33,6 +33,25 @@ profiles:
   - name: elliptic
     partitions: 3
 
+valkey:
+  image: valkey/valkey:8.1-alpine
+  maxmemory: 384mb
+  storage: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 448Mi }
+    limits: { memory: 448Mi }
+
+scorer:
+  replicas: 1
+  # Event Time alignment across partitions (ADR-0016). Off only to measure it.
+  align: true
+  goMemLimit: 200MiB
+  resources:
+    requests: { cpu: 500m, memory: 256Mi }
+    limits: { memory: 256Mi }
+  # Profile -> model image. A scorer runs for each entry (set by `make deploy-model`).
+  models: {}
+
 # Rendered on demand by `make replay`, never by `helm install`.
 replay:
   profile: ""

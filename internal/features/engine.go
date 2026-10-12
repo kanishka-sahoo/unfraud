@@ -27,16 +27,26 @@ const (
 	pairRetention = 90 * 24 * time.Hour
 	// sweepEvery spaces out State.Expire calls in Event Time.
 	sweepEvery = 24 * time.Hour
+	// expireLag keeps expiry well behind the Event Time being processed.
+	// Scorer workers on different partitions run slightly apart in Event
+	// Time; one that is ahead must not delete state another still reads.
+	// Expiring later never changes results: expired state is invisible.
+	expireLag = 6 * time.Hour
+	// guardRetention is how long, in Event Time, a record's feature updates
+	// are remembered as applied. Redeliveries arrive within minutes.
+	guardRetention = 7 * 24 * time.Hour
 )
 
 // Engine turns Events into feature vectors, updating State as it goes.
 type Engine struct {
-	st      State
-	feats   []compiled
-	cols    []string
-	retain  map[string]int64 // set key prefix -> member retention (ms)
-	swept   int64
-	started bool
+	st     State
+	feats  []compiled
+	cols   []string
+	retain map[string]int64 // set key prefix -> member retention (ms)
+	// hasFraudLabels is set when some feature counts released fraud Labels.
+	hasFraudLabels bool
+	swept          int64
+	started        bool
 
 	qs []Query
 	rs []Result
@@ -81,6 +91,7 @@ func New(p profile.Profile, st State) (*Engine, error) {
 			k := setKey(f.Entity, f.Of, "")
 			e.retain[k] = max(e.retain[k], pairRetention.Milliseconds())
 		}
+		e.hasFraudLabels = e.hasFraudLabels || f.Kind == profile.FraudLabels
 		e.feats = append(e.feats, c)
 		e.cols = append(e.cols, f.Columns()...)
 	}
@@ -113,15 +124,19 @@ func (e *Engine) Process(ctx context.Context, env *unfraudv1.Envelope) ([]float6
 	case *unfraudv1.Envelope_Watermark:
 		if t-e.swept >= sweepEvery.Milliseconds() {
 			e.swept = t
-			return nil, e.st.Expire(ctx, t)
+			return nil, e.st.Expire(ctx, t-expireLag.Milliseconds())
 		}
 	}
 	return nil, nil
 }
 
 func (e *Engine) event(ctx context.Context, t int64, ev *unfraudv1.Event) ([]float64, error) {
+	// Updates depend only on the Event, never on what the reads return, so
+	// both are planned first and exchanged with State in one call (one round
+	// trip for Valkey). Reads still see the state from before the Event.
 	e.qs, e.us = e.qs[:0], e.us[:0]
 	start := make([]int, len(e.feats)) // first query index per feature, -1 if skipped
+	seen := map[string]bool{}          // features sharing state update it once
 	for i, f := range e.feats {
 		start[i] = len(e.qs)
 		id, ok := ev.Entities[f.Entity]
@@ -130,12 +145,14 @@ func (e *Engine) event(ctx context.Context, t int64, ev *unfraudv1.Event) ([]flo
 			continue
 		}
 		e.queries(t, f, id, ev)
+		e.updates(t, f, id, ev, seen)
 	}
 	if cap(e.rs) < len(e.qs) {
 		e.rs = make([]Result, len(e.qs))
 	}
 	e.rs = e.rs[:len(e.qs)]
-	if err := e.st.Get(ctx, e.qs, e.rs); err != nil {
+	g := Guard{Key: "e|" + ev.EventId, ExpireMs: t + guardRetention.Milliseconds()}
+	if err := e.st.Exchange(ctx, g, e.qs, e.rs, e.us); err != nil {
 		return nil, err
 	}
 
@@ -143,16 +160,12 @@ func (e *Engine) event(ctx context.Context, t int64, ev *unfraudv1.Event) ([]flo
 	for i := range out {
 		out[i] = math.NaN()
 	}
-	seen := map[string]bool{} // features sharing state update it once
 	for i, f := range e.feats {
-		if start[i] < 0 {
-			continue
+		if start[i] >= 0 {
+			e.compute(t, f, ev, e.rs[start[i]:], out[f.col:])
 		}
-		id := ev.Entities[f.Entity]
-		e.compute(t, f, ev, e.rs[start[i]:], out[f.col:])
-		e.updates(t, f, id, ev, seen)
 	}
-	return out, e.st.Apply(ctx, e.us)
+	return out, nil
 }
 
 func bucketOf(t, size int64) int64 {
@@ -308,6 +321,11 @@ func (e *Engine) labelRelease(ctx context.Context, t int64, lr *unfraudv1.LabelR
 	if lr.Label != unfraudv1.Label_LABEL_FRAUD {
 		return nil
 	}
+	if len(lr.Entities) == 0 && e.hasFraudLabels {
+		// Written by a replayer from before Label Releases carried Entities.
+		// Scoring on would silently zero every released-label feature.
+		return fmt.Errorf("label release for %s has no entities; replay the input topic with the current replayer", lr.EventId)
+	}
 	e.us = e.us[:0]
 	seen := map[string]bool{}
 	for _, f := range e.feats {
@@ -329,7 +347,7 @@ func (e *Engine) labelRelease(ctx context.Context, t int64, lr *unfraudv1.LabelR
 				ExpireMs: (cur+1)*w.bucket + w.ms})
 		}
 	}
-	return e.st.Apply(ctx, e.us)
+	return e.st.Apply(ctx, Guard{Key: "l|" + lr.EventId, ExpireMs: t + guardRetention.Milliseconds()}, e.us)
 }
 
 // fieldString renders f's Field for comparison with its previous value.

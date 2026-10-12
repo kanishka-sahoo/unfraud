@@ -1,0 +1,71 @@
+{{- range $profile, $image := .Values.scorer.models }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scorer-{{ $profile }}
+  labels:
+    app.kubernetes.io/name: scorer
+    unfraud.dev/profile: {{ $profile }}
+    {{- include "unfraud.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $.Values.scorer.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scorer
+      unfraud.dev/profile: {{ $profile }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scorer
+        unfraud.dev/profile: {{ $profile }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      initContainers:
+        # The model ships as an OCI image (ADR-0015); copy it into the pod.
+        - name: model
+          image: {{ $image }}
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: model
+              mountPath: /out
+          resources:
+            limits: { memory: 32Mi }
+      containers:
+        - name: scorer
+          image: {{ $.Values.image.repository }}/scorer:{{ $.Values.image.tag }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - -profile={{ $profile }}
+            - -brokers={{ include "unfraud.bootstrap" $ }}
+            - -valkey=valkey:6379
+            - -model=/model
+            - -align={{ ne (toString $.Values.scorer.align) "false" }}
+          env:
+            - name: GOMEMLIMIT
+              value: {{ $.Values.scorer.goMemLimit | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml $.Values.scorer.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+      volumes:
+        - name: model
+          emptyDir: { sizeLimit: 64Mi }
+{{- end }}

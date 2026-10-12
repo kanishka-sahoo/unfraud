@@ -6,10 +6,73 @@ import json
 import platform
 from pathlib import Path
 
-ROWS = [("static", "Model, static features"), ("realtime", "+ real-time features")]
+ROWS = [
+    ("static", "Model, static features"),
+    ("realtime", "+ real-time features"),
+    ("realtime-uncapped", "+ real-time features, unlimited depth (reference, not served)"),
+]
 
 
-def report(models: Path, out: Path) -> str:
+def decisions_section(models: Path, features: Path | None) -> tuple[list[str], dict | None]:
+    served = models / "lgbm-realtime"
+    if features is None or not (served / "decisions.parquet").exists():
+        return [], None
+    from .decisions import evaluate_decisions
+
+    ev = evaluate_decisions(served, features)
+    th = ev["thresholds"]
+    lines = [
+        "",
+        "### Decisions (scorer Accuracy Run, served model)",
+        "",
+        f"The scorer blocks above the {float(th['block_budget']):.1%}-budget threshold ({th['block']:.4f}) and sends to "
+        f"review above the {float(th['review_budget']):.0%}-budget threshold ({th['review']:.4f}); "
+        "Rules can only escalate.",
+        "",
+        "| Decision source | Alert rate | Precision | Recall | $-recall |",
+        "|---|---|---|---|---|",
+    ]
+    names = {"rules": "Rules only", "model": "Model only (review + block)", "combined": "Model + Rules",
+             "model_equal_volume": "Model only, at the same alert volume as Model + Rules",
+             "blocks": "Blocks only (model + rules)"}
+    for k, label in names.items():
+        r = ev[k]
+        lines.append(f"| {label} | {r['alert_rate']:.2%} | {r['precision']:.1%} | {r['recall']:.1%} | {r['dollar_recall']:.1%} |")
+    lines += ["", "| Rule | Hits | Precision | Fraud caught |", "|---|---|---|---|"]
+    for code, r in ev["per_rule"].items():
+        lines.append(f"| `{code}` | {r['hits']:,} | {r['precision']:.1%} | {r['fraud_caught']:,} |")
+    return lines, ev
+
+
+def system_run_section(out: Path) -> list[str]:
+    runs = {}
+    for variant, label in (("aligned", "Aligned (ADR-0016)"), ("unaligned", "Unaligned (control)")):
+        p = out.parent / f"{out.name.split('-lightgbm')[0]}-system-run-{variant}.json"
+        if p.exists():
+            runs[label] = json.loads(p.read_text())
+    if not runs:
+        return []
+    lines = [
+        "",
+        "### System Run (in-cluster scorer, lite profile, 4-core / 8 GB machine)",
+        "",
+        "One scorer pod scoring the whole input topic from a backlog, with features in Valkey, compared Event by Event "
+        "with the Accuracy Run (`scripts/system-run.sh`, `cmd/drift`). End-to-end latency is not reported here: "
+        "a backlog measures queueing, not scoring; it needs a live-paced replay.",
+        "",
+        "| Scorer | Events/s | Probabilities differing | Mean abs diff | p99 abs diff | Max abs diff | Model decisions differing |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for label, r in runs.items():
+        lines.append(
+            f"| {label} | {r.get('events_per_second', 0):,} | {r['probability_differs'] / r['compared']:.2%} | "
+            f"{r['mean_abs_probability_diff']:.2e} | {r['p99_abs_probability_diff']:.2e} | "
+            f"{r['max_abs_probability_diff']:.3f} | {r['action_differs']:,} of {r['compared']:,} |"
+        )
+    return lines
+
+
+def report(models: Path, out: Path, features: Path | None = None) -> str:
     runs = {}
     for name, _ in ROWS:
         manifest = models / f"lgbm-{name}" / "manifest.json"
@@ -50,6 +113,9 @@ def report(models: Path, out: Path) -> str:
         f"Features table sha256 `{first['features_sha256'][:16]}…`, LightGBM {first['lightgbm_version']}, "
         f"featurize at `{first['featurize_revision'][:12]}`.",
     ]
+    extra, decisions = decisions_section(models, features)
+    lines += extra
+    lines += system_run_section(out)
     table = "\n".join(lines) + "\n"
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -61,6 +127,7 @@ def report(models: Path, out: Path) -> str:
                                               "featurize_revision", "train_revision", "lightgbm_version",
                                               "params")}
                  for k, v in runs.items()},
+        "decisions": decisions,
     }
     out.with_suffix(".json").write_text(json.dumps(summary, indent=2) + "\n")
     out.with_suffix(".md").write_text(table)

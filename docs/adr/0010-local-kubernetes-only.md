@@ -1,6 +1,6 @@
 # Deploy to local Kubernetes (kind) only, using operators for stateful parts
 
-The system is production-shaped, but it must be rerunnable at no cost, so it targets a local kind cluster through one Helm chart, with Tilt for development. Kafka runs through Strimzi in KRaft mode and Postgres through CloudNativePG; Valkey and SeaweedFS run as plain StatefulSets. SeaweedFS was chosen over MinIO because MinIO's community edition is in maintenance mode, and Bitnami charts are avoided because of their 2025 catalog changes. A `lite` values profile (1 broker, no standby) supports smaller machines.
+The system is production-shaped, but it must be rerunnable at no cost, so it targets a local kind cluster through one Helm chart, with Tilt for development. Kafka runs through Strimzi in KRaft mode and Postgres through CloudNativePG; Valkey runs as a plain StatefulSet; model artifacts ship as images (ADR-0015), so no object store is needed. Bitnami charts are avoided because of their 2025 catalog changes. A `lite` values profile (1 broker, no standby) supports smaller machines.
 
 ## Considered Options
 

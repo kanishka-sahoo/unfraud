@@ -6,7 +6,9 @@ A real-time fraud detection engine. It scores transactions as they stream in, li
 - Decisions: [`docs/adr/`](docs/adr)
 - Vocabulary: [`CONTEXT.md`](CONTEXT.md)
 
-**Status:** milestone 1 (data foundations). The dataset adapters, replayer and Kafka on kind work. Scoring, graph, cases and the web app are next.
+**Status:** milestone 3 (scoring). Datasets replay into Kafka; a Go feature engine computes 30 real-time features exactly as of each Event's time (in memory for training, in Valkey live, bit-identical); LightGBM models are trained in Python and served by a Go evaluator whose scores and TreeSHAP values match LightGBM exactly; the scorer runs in the cluster at about 1,300 events/s. Graph, cases and the web app are next.
+
+Current results: [`results/ieee-cis-lightgbm.md`](results/ieee-cis-lightgbm.md).
 
 ## Requirements
 
@@ -23,6 +25,12 @@ make deploy        # Kafka (KRaft) and input topics
 make images        # build images and load them into kind
 make replay PROFILE=elliptic          # stream Elliptic into input.elliptic
 make replay PROFILE=paysim SPEED=3600 # one hour of Event Time per second
+
+# Training and evaluation (outside the cluster)
+make featurize PROFILE=ieee-cis       # Accuracy Run -> data/features/ieee-cis
+make train PROFILE=ieee-cis           # static and real-time LightGBM models
+make parity PROFILE=ieee-cis          # Go scores must equal Python's
+make deploy-model PROFILE=ieee-cis    # ship the model as an image, run its scorer
 ```
 
 `make help` lists every target. `make test` runs unit tests; `make test-integration` also runs them against the cluster's Kafka.

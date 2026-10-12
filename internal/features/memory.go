@@ -4,6 +4,7 @@ import "context"
 
 // Memory is an in-process State, used by Accuracy Runs and tests.
 type Memory struct {
+	guards map[string]int64 // guard key -> expiry
 	series map[string]*series
 	sets   map[string]*set
 	lasts  map[string]*last
@@ -32,10 +33,17 @@ type last struct {
 }
 
 func NewMemory() *Memory {
-	return &Memory{series: map[string]*series{}, sets: map[string]*set{}, lasts: map[string]*last{}}
+	return &Memory{guards: map[string]int64{}, series: map[string]*series{}, sets: map[string]*set{}, lasts: map[string]*last{}}
 }
 
-func (m *Memory) Get(_ context.Context, qs []Query, out []Result) error {
+func (m *Memory) Exchange(ctx context.Context, g Guard, qs []Query, out []Result, us []Update) error {
+	if err := m.get(qs, out); err != nil {
+		return err
+	}
+	return m.Apply(ctx, g, us)
+}
+
+func (m *Memory) get(qs []Query, out []Result) error {
 	for i, q := range qs {
 		var r Result
 		switch q.Kind {
@@ -71,7 +79,13 @@ func (m *Memory) Get(_ context.Context, qs []Query, out []Result) error {
 	return nil
 }
 
-func (m *Memory) Apply(_ context.Context, us []Update) error {
+func (m *Memory) Apply(_ context.Context, g Guard, us []Update) error {
+	if g.Key != "" {
+		if _, done := m.guards[g.Key]; done {
+			return nil
+		}
+		m.guards[g.Key] = g.ExpireMs
+	}
 	for _, u := range us {
 		switch u.Kind {
 		case UIncr:
@@ -110,6 +124,11 @@ func (m *Memory) Apply(_ context.Context, us []Update) error {
 // Expire also forgets set members no query can see any more, which keeps
 // Super-node sets (shared devices, popular addresses) from growing forever.
 func (m *Memory) Expire(_ context.Context, now int64) error {
+	for k, e := range m.guards {
+		if e < now {
+			delete(m.guards, k)
+		}
+	}
 	for k, s := range m.series {
 		if s.expire < now {
 			delete(m.series, k)

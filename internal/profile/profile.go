@@ -21,6 +21,8 @@ type Profile struct {
 	Schema *Schema
 	// Features are the real-time features computed per Entity.
 	Features []Feature
+	// Rules are checked on every Event; they can only escalate a Decision.
+	Rules []Rule
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).
 	Open func(dataDir string) (Source, error)
 }

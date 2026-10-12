@@ -1,0 +1,15 @@
+{
+  "topic": "scored.ieee-cis",
+  "elapsed_seconds": 553,
+  "events_per_second": 1067,
+  "compared": 590540,
+  "missing_from_accuracy_run": 0,
+  "duplicates": 0,
+  "probability_differs": 39307,
+  "max_abs_probability_diff": 0.16310858726501465,
+  "mean_abs_probability_diff": 0.00011226602958718975,
+  "p99_abs_probability_diff": 0.001646534539759159,
+  "action_differs": 80,
+  "end_to_end_latency_p50_ms": 364841,
+  "end_to_end_latency_p99_ms": 591615
+}

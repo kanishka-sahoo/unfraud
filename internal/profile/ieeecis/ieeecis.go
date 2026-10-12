@@ -68,6 +68,7 @@ var Profile = profile.Profile{
 	WatermarkInterval: time.Hour,
 	Schema:            schema,
 	Features:          features,
+	Rules:             rules,
 	Open:              open,
 }
 

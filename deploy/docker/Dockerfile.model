@@ -1,0 +1,6 @@
+# A model artifact as an OCI image (ADR-0015). Built with the model folder as
+# context; an init container copies /model into the scorer pod, and the image
+# tag (a hash of model.txt) is the model version.
+FROM busybox:1.37
+COPY model.txt manifest.json /model/
+CMD ["sh", "-c", "cp /model/* /out/"]

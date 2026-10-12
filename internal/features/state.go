@@ -56,12 +56,24 @@ type Update struct {
 	ExpireMs int64
 }
 
+// Guard makes a batch of Updates idempotent: a State applies the Updates of
+// a given Key at most once, until ExpireMs (Event Time). Kafka redelivers
+// records after a crash or rebalance; without a Guard their feature updates
+// would be counted twice.
+type Guard struct {
+	Key      string
+	ExpireMs int64
+}
+
 // State stores feature state. Calls are batched per Event so that a remote
-// implementation needs one round trip for reads and one for writes. The
+// implementation needs one round trip per Event. The
 // Engine owns all feature logic; a State only stores and aggregates.
 type State interface {
-	Get(ctx context.Context, qs []Query, out []Result) error
-	Apply(ctx context.Context, us []Update) error
+	// Exchange answers qs from the state as it was before applying us.
+	// The Updates are skipped when g was already applied.
+	Exchange(ctx context.Context, g Guard, qs []Query, out []Result, us []Update) error
+	// Apply applies us unless g was already applied.
+	Apply(ctx context.Context, g Guard, us []Update) error
 	// Expire drops state whose ExpireMs is before nowMs.
 	Expire(ctx context.Context, nowMs int64) error
 }

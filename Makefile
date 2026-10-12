@@ -8,7 +8,7 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity fixtures build images deploy-model cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -64,6 +64,16 @@ images: ## Build images and load them into the kind cluster
 	  docker build -q -f deploy/docker/Dockerfile --build-arg CMD=$$c -t unfraud/$$c:$(TAG) . && \
 	  kind load docker-image --name $(CLUSTER) unfraud/$$c:$(TAG); \
 	done
+
+deploy-model: ## Ship a model as an image and run its scorer: make deploy-model PROFILE=ieee-cis [MODEL=lgbm-realtime]
+	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
+	$(eval DIR := models/$(PROFILE)/$(or $(MODEL),lgbm-realtime))
+	$(eval IMG := unfraud/model-$(PROFILE):$(shell sha256sum $(DIR)/model.txt | cut -c1-12))
+	docker build -q -f deploy/docker/Dockerfile.model -t $(IMG) $(DIR)
+	kind load docker-image --name $(CLUSTER) $(IMG)
+	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --reuse-values --set image.tag=$(TAG) \
+	  --set-string 'scorer.models.$(PROFILE)=$(IMG)'
+	kubectl -n $(NAMESPACE) rollout status deploy/scorer-$(PROFILE) --timeout=180s
 
 cluster-up: ## Create the kind cluster and install operators
 	./deploy/kind/up.sh

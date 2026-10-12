@@ -88,7 +88,7 @@ Services contain no dataset-specific logic.
    web (Next.js)
 
  Every consumer: DLQ topic · OpenTelemetry traces · Prometheus metrics
- Model registry: S3-compatible store (SeaweedFS) + manifests in Postgres
+ Models ship as OCI images (ADR-0015); graph-svc snapshots go to a PVC
 ```
 
 ### Services
@@ -96,9 +96,9 @@ Services contain no dataset-specific logic.
 | Service | Language | Scaling | Responsibility |
 |---|---|---|---|
 | `replayer` | Go | k8s Job, one per Replay | Runs a Profile adapter and emits in Event Time order at a speed multiplier (or as fast as possible). Emits Label Releases on the delayed schedule. |
-| `scorer` | Go | Horizontal, KEDA on consumer lag | Feature update and read, rules, model, Contributions, **Provisional Score** and **Decision**, Shadow Model scoring. Stateless. |
+| `scorer` | Go | Horizontal, KEDA on consumer lag | One worker per assigned partition: feature exchange with Valkey (one round trip per Event), model, rules, **Provisional Score** and **Decision**, Shadow Model scoring. Writes `scored.<profile>`. Stateless; Contributions are left to case-svc. |
 | `graph-svc` | Go | Single writer + hot standby ([ADR-0007](./adr/0007-single-writer-graph-service.md)) | Builds Links, maintains Components and neighbor aggregates, runs Leiden on a window, emits **Ring Alerts** and **Revisions**. Snapshots to object store; rebuilds from compacted topics. |
-| `case-svc` | Go | Horizontal | Opens and updates **Cases**, builds **Case Packets**, applies Revisions, stores everything in Postgres. |
+| `case-svc` | Go | Horizontal | Opens and updates **Cases**, computes **Contributions** (Go TreeSHAP) for flagged Events from the model input the scorer attaches, builds **Case Packets**, applies Revisions, stores everything in Postgres. |
 | `summarizer` | Go | Horizontal, rate-limited | Turns Case Packet into **Summary** via OpenRouter, runs the Grounding check, retries, sends failures to the DLQ ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md)). |
 | `cases-api` | Go | Horizontal | REST (OpenAPI) + SSE for the web app. Analyst Dispositions. Replay control (creates replayer Jobs). Model promotion. |
 | `web` | Next.js | Horizontal | The analyst and operator UI (§9). |
@@ -106,7 +106,7 @@ Services contain no dataset-specific logic.
 
 ### Delivery semantics
 
-Producers are idempotent; consumers process at-least-once. Feature updates are deduplicated on `event_id` so a redelivered Event doesn't count twice. Schemas are buf-managed Protobuf compiled into every service, with no runtime schema registry; `buf breaking` in CI is the compatibility gate ([ADR-0014](./adr/0014-no-schema-registry.md)).
+Producers are idempotent; consumers process at-least-once. Every Event's and Label Release's feature updates carry a Guard (`e|<event_id>`, `l|<event_id>`) that Valkey checks with `SET NX` inside the same Lua script, so a redelivered record never counts twice (it is still scored, against state that already includes it). Guards expire 7 days later in Event Time. Consumers of `scored.<profile>` must deduplicate on `event_id`. Schemas are buf-managed Protobuf compiled into every service, with no runtime schema registry; `buf breaking` in CI is the compatibility gate ([ADR-0014](./adr/0014-no-schema-registry.md)).
 
 ## 5. Features ([ADR-0004](./adr/0004-event-time-and-label-release.md), [ADR-0005](./adr/0005-single-feature-implementation.md))
 
@@ -129,9 +129,9 @@ State lives in Valkey as time-bucketed counters, with Lua scripts that update an
 
 ## 6. Scoring ([ADR-0003](./adr/0003-two-stage-scoring.md), [ADR-0008](./adr/0008-pure-go-runtime-inference.md))
 
-1. **Rules** (`rules.yaml`): condition → block / add to score / force review, with a Reason Code. Rules stay only if the ablation shows they add something on top of the model.
+1. **Rules** (`profile.Rule` values): all conditions hold → review or block, with a Reason Code. Rules only escalate the model's Decision. They are written before results and reviewed on the validation month only: a Rule that catches no fraud there is retired (kept in code with the evidence).
 2. **Model**: LightGBM served in-process by our own Go evaluator (`internal/model/lgbm`; `leaves` can't read LightGBM 4.x models). CatBoost is trained and reported, and served through ONNX Runtime only if it clearly wins.
-3. **Contributions**: Go TreeSHAP, checked in CI against LightGBM `pred_contrib` (tolerance 1e-6), alongside the Go-vs-Python score parity tests (fixtures in CI, real data with `make parity`).
+3. **Contributions**: Go TreeSHAP, checked in CI against LightGBM `pred_contrib` (tolerance 1e-9), alongside the Go-vs-Python score parity tests (fixtures in CI, real data with `make parity`). TreeSHAP costs about trees × leaves × depth², so it runs in case-svc for flagged Events only, not in the scoring path. Models are trained with `max_depth=10`: on IEEE-CIS that costs about 1% PR-AUC and makes scoring 19× faster (21 µs) and TreeSHAP 12× faster (16 ms).
 4. **Decision**: thresholds are set from the **Alert Budget** on the validation month.
 5. **Revision**: graph-svc sends `revisions` when new structure changes an Event's graph features: an Elliptic Watermark closes a timestep, or a Ring Alert fires on IEEE-CIS. Revised Decisions update the Case; the Provisional Decision is never overwritten.
 
@@ -181,7 +181,7 @@ Next.js App Router with TypeScript. Server components fetch from `cases-api`; li
 ## 10. Benchmarking ([ADR-0006](./adr/0006-accuracy-vs-system-runs.md))
 
 - **Accuracy Run**: deterministic Replay that pauses at each Watermark until graph-svc catches up, so features are exact as of Event Time. All fraud metrics come from this mode, and so does the training Parquet.
-- **System Run**: production topology, N scorers, full speed. Reports throughput, p50/p99 latency, consumer lag, and score drift compared with the Accuracy Run (the measured cost of stale features).
+- **System Run**: production topology, N scorers, full speed. Reports throughput, p50/p99 latency, consumer lag, and score drift compared with the Accuracy Run (`cmd/drift`: the measured cost of concurrency). Scorer partitions are aligned in Event Time ([ADR-0016](./adr/0016-event-time-alignment-across-partitions.md)); without that, a backlog let partitions drift apart and 96% of scores differed.
 
 IEEE-CIS results table (time split: months 1–4 train / 5 validation / 6 test). PR-AUC, plus recall at Alert Budgets of 0.5%, 1%, 2% and 5% of Events, with dollar-weighted recall and precision at 5%; extra fraud caught by Rings below threshold. Each budget's threshold is set on the validation month and applied unchanged to the test month.
 
@@ -206,8 +206,9 @@ We also report how much the IEEE-CIS results fall short of the Kaggle leaderboar
 ## 11. Deployment: local Kubernetes only ([ADR-0010](./adr/0010-local-kubernetes-only.md))
 
 - **kind** cluster with a local image registry; **Tilt** for the inner dev loop; one umbrella **Helm** chart.
-- **Operators for stateful parts:** Strimzi (Kafka in KRaft mode, 3 brokers), CloudNativePG (Postgres). Valkey and SeaweedFS run as plain StatefulSets.
+- **Operators for stateful parts:** Strimzi (Kafka in KRaft mode, 3 brokers), CloudNativePG (Postgres). Valkey runs as a plain StatefulSet.
 - **Observability:** kube-prometheus-stack, OpenTelemetry Collector → Tempo, Grafana dashboards shipped in the chart.
+- **Valkey** holds feature state with append-only persistence and `noeviction`; expiry is in Event Time through an index sorted set, never wall-clock TTLs.
 - **KEDA** scales the scorer on Kafka consumer lag.
 - Two values profiles. **`lite` is the default.** The reference machine has 8 GB RAM, and after the OS and dev tools about 5 GB is free.
   - `lite` must fit in **about 4 GB of cluster memory**: single-node kind, 1 Kafka broker with a 512 MB heap, Postgres and Valkey with small limits, plain Prometheus + Grafana (no kube-prometheus-stack, Tempo off, traces sampled to stdout), no KEDA, no standby graph-svc, one scorer replica. Every pod has a memory limit, and the chart's total is checked in CI.

@@ -8,9 +8,9 @@
   "runs": {
     "static": {
       "feature_set": "static",
-      "best_iteration": 2541,
+      "best_iteration": 2987,
       "alert_budget": 0.005,
-      "threshold": 0.9980735111290541,
+      "threshold": 0.9983859560627467,
       "label_delay": "720h0m0s",
       "split": {
         "train": {
@@ -29,60 +29,157 @@
       "validation": {
         "events": 83655,
         "fraud": 2828,
-        "pr_auc": 0.6363031724319319,
-        "roc_auc": 0.9217979994606322,
+        "pr_auc": 0.6359592991959291,
+        "roc_auc": 0.9238963221936511,
         "alert_rate": 0.005008666547128085,
-        "recall": 0.14214992927864215,
-        "precision": 0.9594272076372315,
-        "dollar_recall": 0.1048380509018898
+        "recall": 0.14427157001414428,
+        "precision": 0.9737470167064439,
+        "dollar_recall": 0.10309592634439468
       },
       "test": {
         "events": 89326,
         "fraud": 3114,
-        "pr_auc": 0.5545370759416695,
-        "roc_auc": 0.8981727460925064,
-        "alert_rate": 0.005216846159013053,
-        "recall": 0.14001284521515736,
-        "precision": 0.9356223175965666,
-        "dollar_recall": 0.08683377504348755
+        "pr_auc": 0.5577572612829588,
+        "roc_auc": 0.8969569972555891,
+        "alert_rate": 0.0051272865683003824,
+        "recall": 0.13840719332048812,
+        "precision": 0.9410480349344978,
+        "dollar_recall": 0.08003354072570801
       },
       "test_budgets": {
         "0.005": {
-          "threshold": 0.9980735111290541,
-          "alert_rate": 0.005216846159013053,
-          "recall": 0.14001284521515736,
-          "precision": 0.9356223175965666,
-          "recall_ceiling": 0.14964675658317278,
-          "dollar_recall": 0.08683377504348755
+          "threshold": 0.9983859560627467,
+          "alert_rate": 0.0051272865683003824,
+          "recall": 0.13840719332048812,
+          "precision": 0.9410480349344978,
+          "recall_ceiling": 0.147077713551702,
+          "dollar_recall": 0.08003354072570801
         },
         "0.01": {
-          "threshold": 0.9222741021070758,
-          "alert_rate": 0.009806775183037414,
-          "recall": 0.2524084778420039,
-          "precision": 0.8972602739726028,
-          "recall_ceiling": 0.2813102119460501,
-          "dollar_recall": 0.16019751131534576
+          "threshold": 0.9348530805871444,
+          "alert_rate": 0.009683630745807493,
+          "recall": 0.24855491329479767,
+          "precision": 0.8947976878612717,
+          "recall_ceiling": 0.2777777777777778,
+          "dollar_recall": 0.15040051937103271
         },
         "0.02": {
-          "threshold": 0.14574733337263088,
-          "alert_rate": 0.020117323063833598,
-          "recall": 0.41843288375080284,
-          "precision": 0.7250973845297718,
-          "recall_ceiling": 0.5770712909441233,
-          "dollar_recall": 0.31908392906188965
+          "threshold": 0.14232317736773498,
+          "alert_rate": 0.020363611938293443,
+          "recall": 0.4206807964033398,
+          "precision": 0.720175920835624,
+          "recall_ceiling": 0.584136159280668,
+          "dollar_recall": 0.3133558928966522
         },
         "0.05": {
-          "threshold": 0.004363127385742681,
-          "alert_rate": 0.05646732194433871,
-          "recall": 0.6178548490687219,
-          "precision": 0.38144329896907214,
+          "threshold": 0.003941768829754336,
+          "alert_rate": 0.05642254214898238,
+          "recall": 0.628131021194605,
+          "precision": 0.3880952380952381,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.5926458239555359
+          "dollar_recall": 0.5721290111541748
         }
       },
       "features_sha256": "346314430ad79ad8ba78c298653d2e9cd1ee0dce660dac1358ae957f17852071",
       "featurize_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
-      "train_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
+      "train_revision": "be50c7e403ff4fcbf89ecad6b9635cf68d7db7b9",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "max_depth": 10,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    },
+    "realtime": {
+      "feature_set": "realtime",
+      "best_iteration": 237,
+      "alert_budget": 0.005,
+      "threshold": 0.9784405638187175,
+      "label_delay": "720h0m0s",
+      "split": {
+        "train": {
+          "events": 417559,
+          "fraud": 14721
+        },
+        "val": {
+          "events": 83655,
+          "fraud": 2828
+        },
+        "test": {
+          "events": 89326,
+          "fraud": 3114
+        }
+      },
+      "validation": {
+        "events": 83655,
+        "fraud": 2828,
+        "pr_auc": 0.6818809340768698,
+        "roc_auc": 0.9455768190461233,
+        "alert_rate": 0.005008666547128085,
+        "recall": 0.144978783592645,
+        "precision": 0.9785202863961814,
+        "dollar_recall": 0.11577600985765457
+      },
+      "test": {
+        "events": 89326,
+        "fraud": 3114,
+        "pr_auc": 0.6109386431474435,
+        "roc_auc": 0.9272248354573709,
+        "alert_rate": 0.004936972438035959,
+        "recall": 0.1348747591522158,
+        "precision": 0.9523809523809523,
+        "dollar_recall": 0.09259989112615585
+      },
+      "test_budgets": {
+        "0.005": {
+          "threshold": 0.9784405638187175,
+          "alert_rate": 0.004936972438035959,
+          "recall": 0.1348747591522158,
+          "precision": 0.9523809523809523,
+          "recall_ceiling": 0.1416184971098266,
+          "dollar_recall": 0.09259989112615585
+        },
+        "0.01": {
+          "threshold": 0.9057710644323371,
+          "alert_rate": 0.010523251908738778,
+          "recall": 0.27552986512524086,
+          "precision": 0.9127659574468086,
+          "recall_ceiling": 0.3018625561978163,
+          "dollar_recall": 0.1933131366968155
+        },
+        "0.02": {
+          "threshold": 0.4502069784726577,
+          "alert_rate": 0.020486756375523364,
+          "recall": 0.4556840077071291,
+          "precision": 0.7754098360655738,
+          "recall_ceiling": 0.5876685934489403,
+          "dollar_recall": 0.3428432047367096
+        },
+        "0.05": {
+          "threshold": 0.08715284836242022,
+          "alert_rate": 0.053937263506705774,
+          "recall": 0.6583172768143867,
+          "precision": 0.42548775425487756,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.6166436076164246
+        }
+      },
+      "features_sha256": "346314430ad79ad8ba78c298653d2e9cd1ee0dce660dac1358ae957f17852071",
+      "featurize_revision": "051ecd0d33ce53662cbe466d226e0d48c3b7aa5f",
+      "train_revision": "be50c7e403ff4fcbf89ecad6b9635cf68d7db7b9",
       "lightgbm_version": "4.7.0",
       "params": {
         "objective": "binary",
@@ -99,10 +196,11 @@
         "seed": 7,
         "deterministic": true,
         "force_row_wise": true,
-        "verbose": -1
+        "verbose": -1,
+        "max_depth": 10
       }
     },
-    "realtime": {
+    "realtime-uncapped": {
       "feature_set": "realtime",
       "best_iteration": 1414,
       "alert_budget": 0.005,
@@ -197,6 +295,72 @@
         "force_row_wise": true,
         "verbose": -1
       }
+    }
+  },
+  "decisions": {
+    "rules": {
+      "alert_rate": 0.024673667241340708,
+      "precision": 0.3457350272232305,
+      "recall": 0.24470134874759153,
+      "dollar_recall": 0.17948756136504534,
+      "flagged": 2204
+    },
+    "model": {
+      "alert_rate": 0.020486756375523364,
+      "precision": 0.7754098360655738,
+      "recall": 0.4556840077071291,
+      "dollar_recall": 0.3428431941835855,
+      "flagged": 1830
+    },
+    "combined": {
+      "alert_rate": 0.03715603519691915,
+      "precision": 0.46971979511901174,
+      "recall": 0.5006422607578677,
+      "dollar_recall": 0.36954081041466047,
+      "flagged": 3319
+    },
+    "model_equal_volume": {
+      "alert_rate": 0.03929427042518416,
+      "precision": 0.5296296296296297,
+      "recall": 0.5969813744380218,
+      "dollar_recall": 0.5405765744769855,
+      "flagged": 3510
+    },
+    "blocks": {
+      "alert_rate": 0.00891117927591071,
+      "precision": 0.8165829145728644,
+      "recall": 0.20873474630700065,
+      "dollar_recall": 0.15568407746054275,
+      "flagged": 796
+    },
+    "per_rule": {
+      "DEVICE_CARD_BURST": {
+        "hits": 773,
+        "precision": 0.3091849935316947,
+        "fraud_caught": 239
+      },
+      "FRAUD_DEVICE": {
+        "hits": 490,
+        "precision": 0.09795918367346938,
+        "fraud_caught": 48
+      },
+      "KNOWN_FRAUD_CARD": {
+        "hits": 447,
+        "precision": 0.7203579418344519,
+        "fraud_caught": 322
+      },
+      "PRIOR_FRAUD_CARD": {
+        "hits": 1013,
+        "precision": 0.5123395853899309,
+        "fraud_caught": 519
+      }
+    },
+    "events": 89326,
+    "thresholds": {
+      "block_budget": "0.005",
+      "review_budget": "0.02",
+      "block": 0.9784405638187175,
+      "review": 0.4502069784726577
     }
   }
 }

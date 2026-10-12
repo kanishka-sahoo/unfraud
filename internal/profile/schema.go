@@ -51,3 +51,13 @@ func (s *Schema) NewNum() []float64 {
 
 // NewCat returns a categorical vector with every feature missing.
 func (s *Schema) NewCat() []string { return make([]string, len(s.Cat)) }
+
+// Has reports whether name is a categorical (cat) or numeric (!cat) feature.
+func (s *Schema) Has(name string, cat bool) bool {
+	if cat {
+		_, ok := s.catIdx[name]
+		return ok
+	}
+	_, ok := s.numIdx[name]
+	return ok
+}

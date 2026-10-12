@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package unfraud.v1;
+
+option go_package = "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1;unfraudv1";
+
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_APPROVE = 1;
+  ACTION_REVIEW = 2;
+  ACTION_BLOCK = 3;
+}
+
+// Scored is the scorer's Decision for one Event, written to scored.<profile>
+// with the Event's partition key.
+message Scored {
+  string profile = 1;
+  string event_id = 2;
+  int64 event_time_ms = 3;
+  map<string, string> entities = 4;
+
+  double probability = 5;
+  // Model log-odds.
+  double raw_score = 6;
+  Action model_action = 7;
+  Action rule_action = 8;
+  // The stricter of model_action and rule_action.
+  Action action = 9;
+  repeated string reason_codes = 10;
+
+  // Identifies the model artifact (image tag) that scored the Event.
+  string model_version = 11;
+  // The model input vector, present only for review and block Decisions so
+  // Contributions can be computed downstream without re-deriving features.
+  repeated double model_input = 12;
+
+  // Wall-clock milliseconds: when the input record was produced, and when the
+  // Decision was made. Their difference is end-to-end scoring latency.
+  int64 ingested_at_ms = 13;
+  int64 scored_at_ms = 14;
+}

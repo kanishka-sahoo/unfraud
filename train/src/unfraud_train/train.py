@@ -18,6 +18,9 @@ PARAMS = {
     "objective": "binary",
     "learning_rate": 0.1,
     "num_leaves": 127,
+    # Depth 10 costs about 1% PR-AUC on IEEE-CIS but makes trees 6x fewer,
+    # scoring 19x faster and TreeSHAP 12x faster (results/ieee-cis-lightgbm.md).
+    "max_depth": 10,
     "min_data_in_leaf": 100,
     "feature_fraction": 0.5,
     "bagging_fraction": 0.8,
@@ -40,15 +43,17 @@ def git_revision() -> str:
         return "unknown"
 
 
-def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_rounds: int) -> dict:
+def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_rounds: int,
+          overrides: dict | None = None) -> dict:
     started = time.time()
+    params = {**PARAMS, **(overrides or {})}
     data = prepare(features_dir, feature_set)
     tr, va, te = (data.splits[s] for s in ("train", "val", "test"))
     cat_idx = [data.features.index(c) for c in data.categorical]
 
     dtrain = lgb.Dataset(tr.x, tr.y, feature_name=data.features, categorical_feature=cat_idx, free_raw_data=True)
     dval = lgb.Dataset(va.x, va.y, reference=dtrain)
-    model = lgb.train(PARAMS, dtrain, num_boost_round=max_rounds, valid_sets=[dval],
+    model = lgb.train(params, dtrain, num_boost_round=max_rounds, valid_sets=[dval],
                       callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(100)])
 
     val_scores = model.predict(va.x, num_iteration=model.best_iteration)
@@ -70,7 +75,7 @@ def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_ro
         "features": data.features,
         "categorical": data.categorical,
         "vocab": data.vocab,
-        "params": PARAMS,
+        "params": params,
         "best_iteration": model.best_iteration,
         "alert_budget": budget,
         "threshold": threshold,
