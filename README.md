@@ -59,6 +59,7 @@ make replay PROFILE=ieee-cis                                        # stream the
 
 make console                           # http://localhost:3000
 make grafana                           # http://localhost:3001
+make tailscale                         # or serve both on this machine's Tailscale IP, across reboots
 ```
 
 Summaries use a template writer unless you add an OpenRouter key: put it in `~/.config/unfraud/openrouter_key`, run `make secrets`, and deploy with `--set summarizer.driver=openrouter`. `scripts/summary-report.sh` then reports grounding rate, latency and cost per model. `make help` lists every target.
