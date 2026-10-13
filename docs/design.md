@@ -216,6 +216,7 @@ What is built and runs on the 4-core, 8 GB reference machine (`lite`, the defaul
 - **Failure handling:** idempotent producers, at-least-once consumers with idempotency Guards on feature state; records that cannot be processed go to `dlq.<profile>` with the error and origin in headers; when Valkey is unreachable the scorer keeps deciding with real-time features missing and marks Decisions `degraded`; graph-svc recovers by re-reading its input. An optional **Shadow Model** scores every Event beside the active one (recorded, never acted on).
 - **Observability:** Prometheus (pods opt in with `prometheus.io/scrape`, 12-hour retention) and Grafana with a provisioned dashboard (`make grafana`): throughput and latency per Stage, degraded and dead-lettered records, Shadow agreement, graph-svc progress, case-svc and summarizer. Kafka and Valkey internals are not scraped.
 - Every pod has a memory limit. With a full pipeline running, the cluster uses about 3.7 GB.
+- What fits in `lite`: Sparkov end to end, and TabFormer's scorer and graph-svc. AMLworld does not: its feature state for 500,000 accounts took 5 GB in the Accuracy Run, against Valkey's 384 MB and graph-svc's 768 MiB here, so its numbers are offline only.
 - Secrets (the OpenRouter key) are Kubernetes Secrets created by `make secrets`. Nothing leaves the machine except calls to OpenRouter.
 - Model training runs outside the cluster.
 

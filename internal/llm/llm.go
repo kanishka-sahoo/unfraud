@@ -77,8 +77,11 @@ func (Stub) Summarize(_ context.Context, pk cases.Packet) (cases.Summary, Meta, 
 
 // plain writes numbers without exponents, as analysts read them.
 func plain(v any) string {
-	if f, ok := v.(float64); ok {
-		return strconv.FormatFloat(f, 'f', -1, 64)
+	switch x := v.(type) {
+	case nil:
+		return "missing" // as the risk ledger shows it
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
 	}
 	return fmt.Sprint(v)
 }

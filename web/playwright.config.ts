@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 // Runs against a deployed console: `make console` (port-forward to :3000), or
-// set CONSOLE_URL. The cluster needs a Profile with Cases (e.g. amlworld).
+// set CONSOLE_URL. The cluster needs a Profile with Cases and a graph (e.g. tabformer).
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,

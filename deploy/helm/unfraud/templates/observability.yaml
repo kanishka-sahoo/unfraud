@@ -145,9 +145,11 @@ spec:
             - { name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: /var/lib/grafana/dashboards/unfraud.json }
             - { name: GF_ANALYTICS_REPORTING_ENABLED, value: "false" }
           ports: [{ name: http, containerPort: 3000 }]
+          # A fresh install's database migrations peak above 256Mi; with less,
+          # Grafana is OOM-killed a few times before they complete.
           resources:
             requests: { cpu: 50m, memory: 192Mi }
-            limits: { memory: 256Mi }
+            limits: { memory: 384Mi }
           volumeMounts:
             - { name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasources.yaml, subPath: datasources.yaml }
             - { name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml }

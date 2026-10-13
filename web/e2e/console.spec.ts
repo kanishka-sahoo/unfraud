@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const profile = process.env.E2E_PROFILE ?? "amlworld";
+const profile = process.env.E2E_PROFILE ?? "tabformer";
 
 test.beforeEach(({ page }) => {
   page.on("pageerror", (e) => {
@@ -43,7 +43,7 @@ test("the graph explorer draws a case's neighbourhood", async ({ page }) => {
   await page.goto(`/${profile}/cases/${id}`);
   await page.getByRole("link", { name: "Explore its graph" }).click();
   await expect(page.getByRole("heading", { name: new RegExp(`Graph around`) })).toBeVisible();
-  // A drawn neighbourhood, or an explained empty state: the card has no
+  // A drawn neighbourhood, or an explained empty state: the payer has no
   // links in the current window, or graph-svc is not running.
   await expect(
     page.locator(".graph-canvas canvas").first()
@@ -59,8 +59,8 @@ test("the live stream connects", async ({ page }) => {
 test("benchmarks show the generated results", async ({ page }) => {
   await page.goto("/benchmarks");
   await expect(page.getByRole("heading", { name: /tabformer: LightGBM/ })).toBeVisible();
-  await expect(page.getByRole("img", { name: /Illicit F1 per test timestep/ })).toBeVisible();
-  await expect(page.getByText("+ graph features")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /one model across datasets/ })).toBeVisible();
+  await expect(page.getByText("+ graph features").first()).toBeVisible();
 });
 
 test("replays are listed and a bad request is explained", async ({ page, request }) => {

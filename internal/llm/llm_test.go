@@ -79,3 +79,15 @@ func TestOpenRouterRejectsNonJSON(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestStubCallsMissingValuesMissing(t *testing.T) {
+	pk := packet
+	pk.Factors = []cases.Factor{{Feature: "abroad", Description: "merchant abroad", Value: nil, Effect: 0.6}}
+	s, _, err := Stub{}.Summarize(context.Background(), pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s.All(), "abroad (missing)") {
+		t.Fatalf("missing value rendered as <nil>:\n%s", s.All())
+	}
+}

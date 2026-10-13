@@ -12,9 +12,12 @@ kafka:
   replicas: 1
   storage: 10Gi
   heap: 512m
+  # Off-heap memory (index rebuilds and memory-mapped segments on restart)
+  # outgrew 1Gi once two datasets' topics were loaded: Kafka was OOM-killed
+  # recovering its logs.
   resources:
     requests: { cpu: 250m, memory: 1Gi }
-    limits: { memory: 1Gi }
+    limits: { memory: 1536Mi }
   # Host access through kind's port mappings (see deploy/kind/cluster.yaml).
   external:
     bootstrapNodePort: 30092

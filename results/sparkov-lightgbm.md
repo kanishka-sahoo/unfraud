@@ -26,3 +26,11 @@ The scorer blocks above the 0.5%-budget threshold (0.6847) and sends to review a
 | Blocks only (model + rules) | 0.31% | 97.1% | 78.9% | 86.2% |
 
 Every Rule is retired on this Profile: none was as precise on the validation period as the model at the review budget (`internal/profile/payments`).
+
+### System Run (in-cluster scorer, lite profile, 4-core / 8 GB machine)
+
+One scorer pod scoring the whole input topic from a backlog, with features in Valkey, compared Event by Event with the Accuracy Run (`scripts/system-run.sh`, `cmd/drift`). End-to-end latency is not reported here: a backlog measures queueing, not scoring; it needs a live-paced replay.
+
+| Scorer | Events/s | Probabilities differing | Mean abs diff | p99 abs diff | Max abs diff | Model decisions differing |
+|---|---|---|---|---|---|---|
+| Aligned (ADR-0016) | 482 | 1.37% | 3.76e-07 | 4.39e-10 | 0.097 | 102 of 1,852,394 |

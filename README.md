@@ -7,6 +7,10 @@ Three public datasets, with every column named, are normalized into one Payment 
 - Design: [`docs/design.md`](docs/design.md) · decisions: [`docs/adr/`](docs/adr) · vocabulary: [`CONTEXT.md`](CONTEXT.md)
 - Results: [`results/tabformer-lightgbm.md`](results/tabformer-lightgbm.md), [`results/sparkov-lightgbm.md`](results/sparkov-lightgbm.md), [`results/amlworld-lightgbm.md`](results/amlworld-lightgbm.md), [`results/pooled-core.md`](results/pooled-core.md)
 
+![A blocked TabFormer case: grounded summary, decisions from both stages, and the risk ledger from base rate to final probability](docs/screenshots/case.png)
+
+More: [overview](docs/screenshots/overview.png) · [case queue](docs/screenshots/cases.png) · [graph explorer](docs/screenshots/graph.png) · [benchmarks](docs/screenshots/benchmarks.png)
+
 ## Results
 
 Test PR-AUC per dataset (time splits; thresholds always set on the validation period):
@@ -34,6 +38,12 @@ Test PR-AUC per dataset (time splits; thresholds always set on the validation pe
 | Guessing (the fraud rate) | 0.001 | 0.004 | 0.001 |
 
 Test PR-AUC; italic cells are datasets the model never saw. Nothing transfers: a model trained on one simulator scores at chance on the others, because each hides fraud somewhere else (TabFormer in particular merchant codes and abroad, Sparkov in online shopping and groceries at night, AMLworld in fan-in and fan-out transfer patterns). Pooling all three costs each dataset a little and gains nothing. The pooled model still runs: it binds to any payment Profile by feature name, and Go reproduces its Python scores exactly.
+
+**The running system** (4-core, 8 GB laptop, `lite` profile):
+
+- Go scores equal Python LightGBM exactly on every dataset's test period, including the pooled model scoring Sparkov through Sparkov's own schema; Go TreeSHAP matches LightGBM's to 1e-9.
+- Sparkov end to end in the cluster: one scorer pod scored all 1,852,394 Events at 482 a second from a backlog. 98.6% of probabilities are bit-identical to the offline Accuracy Run, and 102 Decisions differ (partitions running in parallel against shared feature state).
+- TabFormer runs its scorer and graph-svc in the cluster (the screenshots); AMLworld's feature state does not fit the `lite` memory budget, so its numbers are offline only.
 
 ## Run it
 
