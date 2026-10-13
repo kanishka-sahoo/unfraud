@@ -75,6 +75,27 @@ func TestDecisionsIgnoreRedelivery(t *testing.T) {
 	}
 }
 
+func TestRecordDecisionsAppliesOnlyNewDecisions(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	// The Revision arrives first; the equally strict Provisional Decision
+	// then takes the Case over, and its redelivery changes nothing.
+	for i, ds := range [][]Decision{{dec("e", 2, 1, .3)}, {dec("e", 1, 1, .4)}, {dec("e", 1, 2, .9)}} {
+		fresh, need, err := s.RecordDecisions(ctx, ds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []int{1, 1, 0}[i]; len(fresh) != want || len(need) != want {
+			t.Fatalf("round %d: %d new decisions, %d cases to explain, want %d", i, len(fresh), len(need), want)
+		}
+	}
+	var action, stage int16
+	s.Pool.QueryRow(ctx, `SELECT action, flagged_by FROM cases WHERE event_id = 'e'`).Scan(&action, &stage)
+	if action != 1 || stage != 1 {
+		t.Fatalf("case action %d flagged by stage %d, want 1 by the Provisional Decision", action, stage)
+	}
+}
+
 func TestCasesOnlyEverGetStricter(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

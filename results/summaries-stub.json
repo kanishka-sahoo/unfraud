@@ -1,0 +1,1 @@
+[{"cases": 114486, "model": "template", "driver": "stub", "errors": 0, "grounded": 114486, "grounded_rate": 1.0000, "latency_p50_ms": 0, "latency_p99_ms": 0, "grounded_on_retry": 0, "cost_usd_per_1k_cases": 0.0000}]

@@ -6,7 +6,30 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
+
+// querier is a pool or a transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// RecordDecisions stores Decisions and applies the new ones to Cases in one
+// transaction, returning the new Decisions and the Cases whose Contributions
+// must be (re)computed. Two transactions would let a crash between them keep
+// a Decision whose Case was never updated: its redelivery is not new, so it
+// would never be applied.
+func (s *Store) RecordDecisions(ctx context.Context, ds []Decision) (fresh []Decision, need []CaseKey, err error) {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if fresh, err = insertDecisions(ctx, tx, ds); err != nil {
+			return err
+		}
+		need, err = upsertCases(ctx, tx, fresh)
+		return err
+	})
+	return fresh, need, err
+}
 
 // Decision is one row of the decisions table.
 type Decision struct {
@@ -30,6 +53,10 @@ type Decision struct {
 // redelivered or replayed Event can score differently (its features already
 // include its first pass), and the first Decision per Event and Stage stands.
 func (s *Store) InsertDecisions(ctx context.Context, ds []Decision) ([]Decision, error) {
+	return insertDecisions(ctx, s.Pool, ds)
+}
+
+func insertDecisions(ctx context.Context, q querier, ds []Decision) ([]Decision, error) {
 	if len(ds) == 0 {
 		return nil, nil
 	}
@@ -43,7 +70,7 @@ func (s *Store) InsertDecisions(ctx context.Context, ds []Decision) ([]Decision,
 		ma[i], ra[i], act[i] = d.ModelAction, d.RuleAction, d.Action
 		rcs[i], vers[i], sa[i], ia[i] = strings.Join(d.ReasonCodes, ","), d.ModelVersion, d.ScoredAt, d.IngestedAt
 	}
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := q.Query(ctx, `
 		INSERT INTO decisions (profile, event_id, stage, event_time, probability, model_action, rule_action,
 		                       action, reason_codes, model_version, scored_at, ingested_at)
 		SELECT p, e, st, et, pr, ma, ra, a, COALESCE(string_to_array(NULLIF(rc, ''), ','), '{}'), v, sa, ia
@@ -96,6 +123,10 @@ const takeover = `(EXCLUDED.action > c.action OR (EXCLUDED.action = c.action AND
 // Contributions must be (re)computed: new ones, and ones whose Decision was
 // taken over.
 func (s *Store) UpsertCases(ctx context.Context, ds []Decision) ([]CaseKey, error) {
+	return upsertCases(ctx, s.Pool, ds)
+}
+
+func upsertCases(ctx context.Context, q querier, ds []Decision) ([]CaseKey, error) {
 	// One row per Case per statement: Postgres can't update a row twice.
 	strictest := map[CaseKey]Decision{}
 	var order []CaseKey
@@ -134,7 +165,7 @@ func (s *Store) UpsertCases(ctx context.Context, ds []Decision) ([]CaseKey, erro
 		prof[i], ids[i], ents[i], rcs[i], vers[i] = d.Profile, d.EventID, string(e), strings.Join(d.ReasonCodes, ","), d.ModelVersion
 		act[i], stage[i], et[i], prob[i] = d.Action, d.Stage, d.EventTime, d.Probability
 	}
-	rows, err := s.Pool.Query(ctx, `
+	rows, err := q.Query(ctx, `
 		INSERT INTO cases AS c (profile, event_id, event_time, entities, action, probability, flagged_by,
 		                        reason_codes, model_version)
 		SELECT p, e, et, en::jsonb, a, pr, st,

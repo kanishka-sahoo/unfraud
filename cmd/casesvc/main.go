@@ -151,14 +151,10 @@ func handle(ctx context.Context, st *store.Store, byVersion map[string]*model.Mo
 		}
 		decisionsStored.WithLabelValues(profile, s.Stage.String()).Inc()
 	}
-	fresh, err := st.InsertDecisions(ctx, ds)
-	if err != nil {
-		return fmt.Errorf("storing decisions: %w", err)
-	}
 	// Redelivered and replayed Decisions never change Cases.
-	need, err := st.UpsertCases(ctx, fresh)
+	fresh, need, err := st.RecordDecisions(ctx, ds)
 	if err != nil {
-		return fmt.Errorf("upserting cases: %w", err)
+		return fmt.Errorf("recording decisions: %w", err)
 	}
 	// Explain each Case with the Decision UpsertCases recorded: the
 	// strictest new one in this batch, the earlier Stage on ties.
