@@ -15,8 +15,8 @@ import (
 // TestParityWithPython scores a trained model's test month in Go, starting
 // from the raw features table, and compares with Python LightGBM's scores:
 //
-//	UNFRAUD_PARITY_MODEL=models/ieee-cis/lgbm-realtime \
-//	UNFRAUD_PARITY_FEATURES=data/features/ieee-cis go test ./internal/model/
+//	UNFRAUD_PARITY_MODEL=models/tabformer/lgbm-realtime \
+//	UNFRAUD_PARITY_FEATURES=data/features/tabformer go test ./internal/model/
 func TestParityWithPython(t *testing.T) {
 	modelDir, featDir := os.Getenv("UNFRAUD_PARITY_MODEL"), os.Getenv("UNFRAUD_PARITY_FEATURES")
 	if modelDir == "" || featDir == "" {
@@ -50,6 +50,9 @@ func TestParityWithPython(t *testing.T) {
 	}
 	idCol, _ := pr.Index("event_id")
 	scoreCol, _ := pr.Index("raw_score")
+	// A pooled model's predictions cover several Profiles, whose event ids
+	// may coincide; keep this Profile's.
+	srcCol, pooled := pr.Index("source")
 	for {
 		row, err := pr.Next()
 		if err == io.EOF {
@@ -57,6 +60,9 @@ func TestParityWithPython(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatal(err)
+		}
+		if pooled && string(row[srcCol].ByteArray()) != fm.Profile {
+			continue
 		}
 		want[string(row[idCol].ByteArray())] = row[scoreCol].Double()
 	}

@@ -8,7 +8,7 @@ import type { components } from "@/lib/schema";
 
 type Subgraph = components["schemas"]["Subgraph"];
 
-const colors = { card: "#e8e4d8", device: "#3987e5", tx: "#e8e4d8", fraud: "#d03b3b", super: "#8c97ab" };
+const colors = { payer: "#e8e4d8", payee: "#3987e5", fraud: "#d03b3b", super: "#8c97ab" };
 
 /** A neighbourhood drawn with Sigma.js; clicking a node re-centres on it. */
 export function GraphView({ profile, data }: { profile: string; data: Subgraph }) {
@@ -24,7 +24,7 @@ export function GraphView({ profile, data }: { profile: string; data: Subgraph }
       const angle = (i / Math.max(1, data.nodes.length)) * Math.PI * 2;
       g.addNode(`${n.kind}:${n.id}`, {
         x: Math.cos(angle) * 10, y: Math.sin(angle) * 10,
-        size: n.id === data.center ? 4 : n.kind === "device" ? 2 : 2.5,
+        size: n.id === data.center ? 4 : n.kind === "payee" ? 2 : 2.5,
         color: n.fraud ? colors.fraud : n.super_node ? colors.super : colors[n.kind],
         label: n.id === data.center || n.fraud ? n.id : undefined,
         node: n.id, kind: n.kind,
@@ -56,7 +56,7 @@ export function GraphView({ profile, data }: { profile: string; data: Subgraph }
       });
       s.on("clickNode", ({ node }) => {
         const attrs = g.getNodeAttributes(node);
-        if (attrs.kind !== "device") router.push(`/${profile}/graph/${encodeURIComponent(attrs.node)}`);
+        if (attrs.kind === "payer") router.push(`/${profile}/graph/${encodeURIComponent(attrs.node)}`);
       });
       renderer = s;
     });

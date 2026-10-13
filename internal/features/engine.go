@@ -47,7 +47,6 @@ type Engine struct {
 	// hasFraudLabels is set when some feature counts released fraud Labels.
 	hasFraudLabels bool
 	graph          *graph.Graph // optional; its columns come last
-	flow           *graph.Flow  // optional; reported through Revised
 	swept          int64
 	started        bool
 
@@ -87,46 +86,13 @@ func WithGraph(p profile.Profile) Option {
 	}
 }
 
-// WithFlow computes the Profile's flow-graph features when each period
-// closes; read them with Revised. Like WithGraph, it needs the whole ordered
-// stream, so it is for Accuracy Runs and graph-svc.
-func WithFlow(p profile.Profile) Option {
-	return func(e *Engine) error {
-		if p.Flow == nil {
-			return nil
-		}
-		f, err := graph.NewFlow(*p.Flow, p.Schema)
-		e.flow = f
-		return err
-	}
-}
-
-// Revised returns flow-graph features for periods closed since the last call.
-func (e *Engine) Revised() []graph.Revised {
-	if e.flow == nil {
-		return nil
-	}
-	return e.flow.Revised()
-}
-
-// Neighborhood returns a Node's graph neighbourhood, from the attribute
-// graph or the flow graph, whichever the Profile has.
+// Neighborhood returns a Node's neighbourhood in the attribute graph; ok is
+// false when the Profile has no graph.
 func (e *Engine) Neighborhood(t int64, node string, hops, maxNodes int) (graph.Subgraph, bool) {
-	switch {
-	case e.graph != nil:
-		return e.graph.Neighborhood(t, node, hops, maxNodes), true
-	case e.flow != nil:
-		return e.flow.Neighborhood(node, hops, maxNodes), true
+	if e.graph == nil {
+		return graph.Subgraph{}, false
 	}
-	return graph.Subgraph{}, false
-}
-
-// FlowColumns names Revised values, or nil without a flow graph.
-func (e *Engine) FlowColumns() []string {
-	if e.flow == nil {
-		return nil
-	}
-	return e.flow.Columns()
+	return e.graph.Neighborhood(t, node, hops, maxNodes), true
 }
 
 // New compiles a Profile's features.
@@ -198,9 +164,6 @@ func (e *Engine) Process(ctx context.Context, env *unfraudv1.Envelope) ([]float6
 	var gv []float64
 	if e.graph != nil {
 		gv = e.graph.Process(env)
-	}
-	if e.flow != nil {
-		e.flow.Process(env)
 	}
 	switch p := env.Payload.(type) {
 	case *unfraudv1.Envelope_Event:

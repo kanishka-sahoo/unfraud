@@ -13,14 +13,14 @@ import (
 )
 
 var packet = cases.Packet{
-	CaseID: "ieee-cis/2987001", Dataset: "ieee-cis", EventTime: "2017-12-02T00:00:00Z",
+	CaseID: "tabformer/2987001", Dataset: "tabformer", EventTime: "2017-12-02T00:00:00Z",
 	Decision: cases.PacketDecision{Action: "block", Probability: 0.9873, FlaggedBy: "the graph revision"},
-	Reasons:  []cases.PacketReason{{Code: "KNOWN_FRAUD_CARD", Description: "two or more fraud labels"}},
-	Entities: map[string]string{"card_uid": "2755_nan_nan", "device": "SAMSUNG|Android 7.0"},
+	Reasons:  []cases.PacketReason{{Code: "KNOWN_FRAUD_PAYER", Description: "two or more fraud labels"}},
+	Entities: map[string]string{"payer": "2755_nan_nan", "payee": "SAMSUNG|Android 7.0"},
 	Factors: []cases.Factor{
-		{Feature: "card_fraud_labels_30d", Description: "confirmed fraud", Value: 3.0, Effect: 2.413},
-		{Feature: "TransactionAmt", Description: "amount", Value: 117.95, Effect: 0.512},
-		{Feature: "card_since_last", Description: "seconds since", Value: 2762261.0, Effect: -0.3},
+		{Feature: "payer_fraud_labels_30d", Description: "confirmed fraud", Value: 3.0, Effect: 2.413},
+		{Feature: "amount_usd", Description: "amount", Value: 117.95, Effect: 0.512},
+		{Feature: "payer_since_last", Description: "seconds since", Value: 2762261.0, Effect: -0.3},
 	},
 	Anonymized: &cases.Factor{Feature: "anonymized", Effect: 0.88},
 }

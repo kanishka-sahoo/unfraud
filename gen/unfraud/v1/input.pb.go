@@ -216,12 +216,11 @@ func (*Envelope_Watermark) isEnvelope_Payload() {}
 
 func (*Envelope_LabelRelease) isEnvelope_Payload() {}
 
-// Event is one scorable unit: a payment in IEEE-CIS and PaySim, a Bitcoin
-// transaction node in Elliptic.
+// Event is one scorable unit: a card payment or a bank transfer.
 type Event struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	EventId string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	// Entity type to Entity id, for example "card_uid" -> "13926_315_17501".
+	// Entity type to Entity id, for example "payer" -> "841-2".
 	// Absent types are omitted, never sent as empty strings.
 	Entities map[string]string `protobuf:"bytes,2,rep,name=entities,proto3" json:"entities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Identifies the Profile's feature schema that num and cat follow.
@@ -352,8 +351,9 @@ func (x *EntityRef) GetId() string {
 	return ""
 }
 
-// Link is a flow Link supplied by the dataset (Elliptic). Attribute Links are
-// derived downstream from shared Entities and never appear on the input topic.
+// Link is a flow Link supplied by a dataset. No current Profile emits them:
+// attribute Links are derived downstream from shared Entities and never
+// appear on the input topic.
 type Link struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Src           *EntityRef             `protobuf:"bytes,1,opt,name=src,proto3" json:"src,omitempty"`

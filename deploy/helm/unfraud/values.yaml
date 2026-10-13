@@ -26,11 +26,13 @@ kafka:
 
 # One ordered input topic per Profile (ADR-0013).
 profiles:
-  - name: ieee-cis
+  - name: tabformer
+    partitions: 3
+  - name: sparkov
+    partitions: 3
+  - name: amlworld
     partitions: 3
   - name: paysim
-    partitions: 3
-  - name: elliptic
     partitions: 3
 
 valkey:

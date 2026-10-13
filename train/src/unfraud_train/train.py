@@ -1,4 +1,4 @@
-"""Training a LightGBM model on an Accuracy Run's tables."""
+"""Training a LightGBM model on one or more Accuracy Runs' tables."""
 
 from __future__ import annotations
 
@@ -11,15 +11,14 @@ import lightgbm as lgb
 import numpy as np
 import polars as pl
 
-from .data import prepare
-from .metrics import at_budgets, evaluate, f1_report, threshold_for_budget
+from .data import Prepared, Split, manifest, prepare
+from .metrics import at_budgets, evaluate
 
 PARAMS = {
     "objective": "binary",
     "learning_rate": 0.1,
     "num_leaves": 127,
-    # Depth 10 costs about 1% PR-AUC on IEEE-CIS but makes trees 6x fewer,
-    # scoring 19x faster and TreeSHAP 12x faster (results/ieee-cis-lightgbm.md).
+    # Depth 10 keeps trees shallow enough for fast scoring and TreeSHAP in Go.
     "max_depth": 10,
     "min_data_in_leaf": 100,
     "feature_fraction": 0.5,
@@ -43,11 +42,34 @@ def git_revision() -> str:
         return "unknown"
 
 
-def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_rounds: int,
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1 / (1 + np.exp(-x))
+
+
+def per_source(data: Prepared, val_scores: np.ndarray, test_scores: np.ndarray, budget: float) -> dict:
+    """Validation-set thresholds and test metrics for each source on its
+    own: a pooled model still serves each dataset's Events separately."""
+    va, te = data.splits["val"], data.splits["test"]
+    out = {}
+    for i, name in enumerate(data.sources):
+        v, t = va.source == i, te.source == i
+        threshold = float(np.quantile(val_scores[v], 1 - budget))
+        out[name] = {
+            "split": {s.name: {"events": int((s.source == i).sum()), "fraud": int(s.y[s.source == i].sum())}
+                      for s in data.splits.values()},
+            "threshold": threshold,
+            "validation": evaluate(va.y[v], val_scores[v], threshold, va.amount[v]),
+            "test": evaluate(te.y[t], test_scores[t], threshold, te.amount[t]),
+            "test_budgets": at_budgets(val_scores[v], te.y[t], test_scores[t], te.amount[t]),
+        }
+    return out
+
+
+def train(features_dirs: list[Path], out: Path, feature_set: str, budget: float, max_rounds: int,
           overrides: dict | None = None) -> dict:
     started = time.time()
     params = {**PARAMS, **(overrides or {})}
-    data = prepare(features_dir, feature_set)
+    data = prepare(features_dirs, feature_set)
     tr, va, te = (data.splits[s] for s in ("train", "val", "test"))
     cat_idx = [data.features.index(c) for c in data.categorical]
 
@@ -57,44 +79,64 @@ def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_ro
                       callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(100)])
 
     val_scores = model.predict(va.x, num_iteration=model.best_iteration)
-    threshold = threshold_for_budget(val_scores, budget)
     test_raw = model.predict(te.x, num_iteration=model.best_iteration, raw_score=True)
-    test_scores = 1 / (1 + np.exp(-test_raw))
+    test_scores = sigmoid(test_raw)
 
     out.mkdir(parents=True, exist_ok=True)
     model.save_model(out / "model.txt", num_iteration=model.best_iteration)
-    pl.DataFrame({"event_id": te.event_id, "raw_score": test_raw}).write_parquet(out / "test_predictions.parquet")
-    pl.DataFrame({"event_id": va.event_id, "score": val_scores}).write_parquet(out / "val_predictions.parquet")
+    sources = np.array(data.sources)
+    pl.DataFrame({"event_id": te.event_id, "source": sources[te.source], "raw_score": test_raw}) \
+        .write_parquet(out / "test_predictions.parquet")
+    pl.DataFrame({"event_id": va.event_id, "source": sources[va.source], "score": val_scores}) \
+        .write_parquet(out / "val_predictions.parquet")
 
-    manifest = json.loads((features_dir / "manifest.json").read_text())
-    groups = None
-    if manifest["profile"] == "elliptic":
-        ts = pl.read_parquet(features_dir / "features.parquet", columns=["event_id", "timestep"])
-        groups = pl.DataFrame({"event_id": te.event_id}).join(ts, on="event_id", how="left")["timestep"].to_numpy()
+    manifests = [manifest(d) for d in features_dirs]
+    results = per_source(data, val_scores, test_scores, budget)
+    first = results[data.sources[0]]
     report = {
-        "profile": manifest["profile"],
+        "profile": "+".join(data.sources),
+        "sources": data.sources,
         "feature_set": feature_set,
         "model": "lightgbm",
-        "schema_id": manifest["schema_id"],
+        # Core models bind to any payment Profile by feature name (schema 0).
+        "schema_id": 0 if feature_set == "core" else manifests[0]["schema_id"],
         "features": data.features,
         "categorical": data.categorical,
         "vocab": data.vocab,
         "params": params,
         "best_iteration": model.best_iteration,
         "alert_budget": budget,
-        "threshold": threshold,
-        "label_delay": manifest["label_delay"],
-        "split": {s: {"events": int(len(data.splits[s].y)), "fraud": int(data.splits[s].y.sum())}
-                  for s in data.splits},
-        "validation": evaluate(va.y, val_scores, threshold, va.amount),
-        "test": evaluate(te.y, test_scores, threshold, te.amount),
-        "test_budgets": at_budgets(val_scores, te.y, test_scores, te.amount),
-        "test_f1": f1_report(va.y, val_scores, te.y, test_scores, groups),
+        "label_delay": {m["profile"]: m["label_delay"] for m in manifests},
+        # A single source's results at the top level, as the scorer reads them.
+        "threshold": first["threshold"],
+        "split": first["split"],
+        "validation": first["validation"],
+        "test": first["test"],
+        "test_budgets": first["test_budgets"],
+        "per_source": results,
         "features_sha256": data.features_sha256,
-        "featurize_revision": manifest["git_revision"],
+        "featurize_revision": {m["profile"]: m["git_revision"] for m in manifests},
         "train_revision": git_revision(),
         "lightgbm_version": lgb.__version__,
         "train_seconds": round(time.time() - started, 1),
     }
     (out / "manifest.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
+
+
+def transfer(model_dir: Path, features_dir: Path) -> dict:
+    """Scores another Profile's validation and test periods with a trained
+    core model, unchanged. Thresholds come from that Profile's validation
+    period, as a team adopting the model would set them."""
+    m = json.loads((model_dir / "manifest.json").read_text())
+    if m["schema_id"] != 0:
+        raise SystemExit(f"{model_dir} is not a core model; only core models transfer")
+    data = prepare([features_dir], m["feature_set"], vocab=m["vocab"])
+    if data.features != m["features"]:
+        raise SystemExit("feature columns differ from the model's")
+    booster = lgb.Booster(model_file=str(model_dir / "model.txt"))
+    va, te = data.splits["val"], data.splits["test"]
+    return per_source(data, booster.predict(va.x), booster.predict(te.x), m["alert_budget"])[data.sources[0]]
+
+
+__all__ = ["train", "transfer", "Split"]

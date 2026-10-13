@@ -25,15 +25,22 @@ type Profile struct {
 	Rules []Rule
 	// Graph, when set, adds attribute-graph features (internal/graph).
 	Graph *GraphConfig
-	// Flow, when set, computes flow-graph features when a period closes,
-	// for Revisions (internal/graph.Flow).
-	Flow *FlowConfig
 	// Glossary describes raw schema features whose meaning is published.
 	// Raw features not in it are anonymized: Case Packets combine them
 	// into one model signal instead of guessing what they mean.
 	Glossary map[string]string
+	// Split divides Event Time for training and evaluation.
+	Split Split
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).
 	Open func(dataDir string) (Source, error)
+}
+
+// Split divides a dataset by Event Time. Events before Train only warm up
+// real-time features; [Train, Validation) trains, [Validation, Test)
+// validates (thresholds, rule reviews) and everything from Test on is the
+// test period.
+type Split struct {
+	Train, Validation, Test time.Time
 }
 
 // Record is one item read from a dataset.

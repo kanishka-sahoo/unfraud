@@ -5,9 +5,12 @@ import { api, type Subgraph } from "@/lib/api";
 
 export const metadata = { title: "Graph" };
 
+/** What a Node (payer) and a Link attribute (payee) are in each graph. */
+const nouns: Record<string, [string, string]> = { tabformer: ["Card", "Merchant"], amlworld: ["Account", "Receiving account"] };
+
 const explain: Record<string, string> = {
-  "ieee-cis": "Cards linked through shared devices over the last 30 days. Devices used by more than 20 cards are generic fingerprints and never link.",
-  elliptic: "Bitcoin payments between transactions. Links are known once a transaction's timestep closes.",
+  tabformer: "Cards linked through merchants they both paid in the last 30 days. Merchants paid by more than 100 cards are too common to link.",
+  amlworld: "Accounts linked through accounts they both paid in the last 7 days. Accounts paid by more than 20 others are too common to link.",
 };
 
 export default function GraphPage({ params, searchParams }: PageProps<"/[profile]/graph/[node]">) {
@@ -58,8 +61,8 @@ async function GraphBody({ params, searchParams }: {
           <GraphView profile={profile} data={data} />
           <div>
             <div className="legend" style={{ flexDirection: "column", gap: 6 }}>
-              <span><span className="key" style={{ background: "#e8e4d8", height: 8, width: 8, borderRadius: 4 }} />{profile === "elliptic" ? "Transaction" : "Card"}</span>
-              {profile !== "elliptic" && <span><span className="key" style={{ background: "#3987e5", height: 8, width: 8, borderRadius: 4 }} />Device</span>}
+              <span><span className="key" style={{ background: "#e8e4d8", height: 8, width: 8, borderRadius: 4 }} />{nouns[profile]?.[0] ?? "Payer"}</span>
+              <span><span className="key" style={{ background: "#3987e5", height: 8, width: 8, borderRadius: 4 }} />{nouns[profile]?.[1] ?? "Payee"}</span>
               <span><span className="key" style={{ background: "#d03b3b", height: 8, width: 8, borderRadius: 4 }} />Confirmed fraud (released label)</span>
             </div>
             <p className="muted" style={{ fontSize: "var(--t-sm)" }}>

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Downloads the public datasets with the user's own Kaggle credentials and
-# verifies them against data/checksums.sha256. Kaggle licences forbid
-# redistribution, so the data itself is never committed.
+# Downloads the public datasets with the user's own Kaggle credentials,
+# verifies them against data/checksums.sha256, and normalizes each payment
+# dataset into <profile>/events.csv (unfraud-train prepare). The prepared
+# files' checksums are recorded too, so preparation is checked as well.
+# Licences differ, so the data itself is never committed.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,38 +12,29 @@ sums="$root/data/checksums.sha256"
 
 command -v kaggle >/dev/null || { echo "kaggle CLI not found (uv tool install kaggle)" >&2; exit 1; }
 
-fetch_competition() { # dir competition file...
-  local dir="$raw/$1" comp="$2"; shift 2
+fetch() { # dir dataset file...
+  local dir="$raw/$1" ds="$2"; shift 2
   mkdir -p "$dir"
   for f in "$@"; do
     [[ -f "$dir/$f" ]] && continue
-    if ! kaggle competitions download -c "$comp" -f "$f" -p "$dir" -q; then
-      echo "error: cannot download $comp. Accept the rules at https://www.kaggle.com/competitions/$comp/rules" >&2
-      echo "       (Kaggle also requires a phone-verified account for competition data)" >&2
-      return 1
-    fi
+    kaggle datasets download "$ds" -f "$f" -p "$dir" -q
     if [[ -f "$dir/$f.zip" ]]; then unzip -oq "$dir/$f.zip" -d "$dir" && rm "$dir/$f.zip"; fi
   done
 }
 
-fetch_dataset() { # dir dataset expected-file
-  local dir="$raw/$1"
-  mkdir -p "$dir"
-  [[ -f "$dir/$3" ]] && return
-  kaggle datasets download "$2" -p "$dir" --unzip -q
-}
-
-failed=0
-# IEEE-CIS test labels are private, so only the training files are useful.
-fetch_competition ieee-cis ieee-fraud-detection train_transaction.csv train_identity.csv || failed=1
-fetch_dataset paysim ealaxi/paysim1 PS_20174392719_1491204439457_log.csv || failed=1
-fetch_dataset elliptic ellipticco/elliptic-data-set elliptic_bitcoin_dataset/elliptic_txs_features.csv || failed=1
+fetch tabformer ealtman2019/credit-card-transactions credit_card_transactions-ibm_v2.csv sd254_cards.csv sd254_users.csv
+fetch sparkov kartik2112/fraud-detection fraudTrain.csv fraudTest.csv
+fetch amlworld ealtman2019/ibm-transactions-for-anti-money-laundering-aml HI-Small_Trans.csv HI-Small_accounts.csv
+fetch paysim ealaxi/paysim1 PS_20174392719_1491204439457_log.csv
 
 cd "$raw"
+for p in tabformer sparkov amlworld; do
+  [[ -f "$p/events.csv" ]] || uv run --project "$root/train" unfraud-train prepare --raw "$raw" "$p"
+done
+
 if [[ "${1:-}" == "--record" ]]; then
   find . -name '*.csv' | sort | xargs sha256sum > "$sums"
   echo "recorded checksums to $sums"
 else
-  sha256sum --quiet -c "$sums" && echo "all present datasets verified"
+  sha256sum --quiet -c "$sums" && echo "all datasets verified"
 fi
-exit $failed

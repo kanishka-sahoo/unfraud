@@ -5,7 +5,6 @@ package cases
 import (
 	"fmt"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/kanishka-sahoo/unfraud/internal/graph"
@@ -101,16 +100,13 @@ func describe(p profile.Profile, feature string) (string, bool) {
 	if d, ok := p.Describe(feature); ok {
 		return d, true
 	}
-	if d, ok := graph.Descriptions[feature]; ok {
-		return d, true
+	if p.Graph != nil {
+		if d, ok := graph.Describe(*p.Graph, feature); ok {
+			return d, true
+		}
 	}
 	if d, ok := p.Glossary[feature]; ok {
 		return d, true
-	}
-	if n, ok := strings.CutPrefix(feature, "nbr_mean_"); ok {
-		if d, ok := describe(p, n); ok {
-			return "average over payment neighbours of: " + d, true
-		}
 	}
 	return "", false
 }

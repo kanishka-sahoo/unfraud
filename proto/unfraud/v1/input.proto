@@ -25,11 +25,10 @@ message Envelope {
   }
 }
 
-// Event is one scorable unit: a payment in IEEE-CIS and PaySim, a Bitcoin
-// transaction node in Elliptic.
+// Event is one scorable unit: a card payment or a bank transfer.
 message Event {
   string event_id = 1;
-  // Entity type to Entity id, for example "card_uid" -> "13926_315_17501".
+  // Entity type to Entity id, for example "payer" -> "841-2".
   // Absent types are omitted, never sent as empty strings.
   map<string, string> entities = 2;
   // Identifies the Profile's feature schema that num and cat follow.
@@ -46,8 +45,9 @@ message EntityRef {
   string id = 2;
 }
 
-// Link is a flow Link supplied by the dataset (Elliptic). Attribute Links are
-// derived downstream from shared Entities and never appear on the input topic.
+// Link is a flow Link supplied by a dataset. No current Profile emits them:
+// attribute Links are derived downstream from shared Entities and never
+// appear on the input topic.
 message Link {
   EntityRef src = 1;
   EntityRef dst = 2;

@@ -14,21 +14,33 @@ _Avoid_: Tenant, domain, dataset config
 The ordered list of numeric and categorical feature names a Profile's Events carry. Events send feature values by position in this list.
 _Avoid_: Feature set, columns
 
+**Payment Schema**:
+The normalized form every payment dataset is prepared into (`events.csv`): the core columns, which mean the same in every dataset, followed by the dataset's own named extras.
+_Avoid_: Common format, unified dataset
+
+**Core Features**:
+The features every payment Profile shares by name and meaning: amount in USD, channel, merchant category, hour, weekday, and the real-time features built on them. A Core Model uses only these, so it can score any payment Profile.
+_Avoid_: Common features, shared columns
+
 **Event**:
-One scorable unit in the standard schema, carrying an event time, Entities and features. In IEEE-CIS and PaySim this is a payment; in Elliptic it is a Bitcoin transaction node.
+One scorable unit in the standard schema, carrying an event time, Entities and features: a card payment (TabFormer, Sparkov, PaySim) or a bank transfer (AMLworld).
 _Avoid_: Transaction (ambiguous across profiles), message, record
 
 **Entity**:
-A thing that Events refer to and that features are counted against, such as a Card UID, a Device Fingerprint, an email domain or an address.
-_Avoid_: Account (except where a Profile genuinely has accounts), key
+A thing that Events refer to and that features are counted against: a Payer, a Payee or a Customer.
+_Avoid_: Key
 
-**Card UID**:
-The reconstructed identity of a card in IEEE-CIS, derived from card, address and day-offset columns, because the dataset has no explicit card or customer ID.
-_Avoid_: Card ID, user ID, customer
+**Payer**:
+The instrument that pays: a card, or the bank account money leaves.
+_Avoid_: Sender, source, card (except in card datasets)
 
-**Device Fingerprint**:
-The combination of device and browser identity attributes that stands in for a device in IEEE-CIS. The dataset has no raw IP.
-_Avoid_: Device ID, IP
+**Payee**:
+Who is paid: a merchant, or the bank account money arrives in.
+_Avoid_: Receiver, destination, merchant (except in card datasets)
+
+**Customer**:
+Who owns the Payer: a cardholder, or the legal entity behind a bank account. One Customer can have several Payers.
+_Avoid_: User, account holder
 
 **Event Time**:
 When an Event happened according to the dataset. All windows, Label Releases and orderings use it; wall-clock time is used only to measure system latency.
@@ -45,7 +57,7 @@ The score given to an Event on arrival, using only what was known at its Event T
 _Avoid_: Initial score, real-time score
 
 **Revision**:
-A later re-score of an Event, triggered by new graph structure such as a closed Elliptic timestep or a Ring Alert.
+A later re-score of an Event, triggered by new graph structure such as a Ring Alert.
 _Avoid_: Rescore, update
 
 **Decision**:
@@ -71,11 +83,11 @@ _Avoid_: Canary, challenger
 ### Graph
 
 **Link**:
-An edge between Entities or Events. An attribute Link is derived from a shared attribute value (IEEE-CIS); a flow Link comes from the dataset (Elliptic).
+An edge between Entities, derived from a shared attribute value: two Payers link through a Payee they both paid.
 _Avoid_: Edge (fine in code, not in the domain), relation
 
 **Super-node**:
-An attribute value shared by so many Entities (for example `gmail.com`) that linking through it would merge unrelated activity. Super-nodes are excluded from linking.
+An attribute value shared by so many Entities (for example a supermarket every card pays) that linking through it would merge unrelated activity. Super-nodes are excluded from linking.
 _Avoid_: Hub, popular node
 
 **Component**:
@@ -97,7 +109,7 @@ _Avoid_: Graph alert
 ### Labels and review
 
 **Label**:
-The dataset's ground truth for an Event (fraud or legitimate; unknown in Elliptic).
+The dataset's ground truth for an Event: fraud or legitimate. In AMLworld, laundering stands in for fraud.
 _Avoid_: Tag, class
 
 **Label Release**:

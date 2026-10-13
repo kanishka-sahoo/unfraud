@@ -15,7 +15,7 @@ stop() {
 start() {
   stop
   kubectl -n unfraud port-forward svc/cases-rw 15432:5432 >"$run/pg.log" 2>&1 & echo $! >"$run/pg.pid"
-  kubectl -n unfraud port-forward deploy/graphsvc-elliptic 18086:8080 >"$run/graph.log" 2>&1 & echo $! >"$run/graph.pid"
+  kubectl -n unfraud port-forward deploy/graphsvc-amlworld 18086:8080 >"$run/graph.log" 2>&1 & echo $! >"$run/graph.pid"
   until nc -z 127.0.0.1 15432 2>/dev/null; do sleep 0.5; done
   pw=$(kubectl -n unfraud get secret cases-app -o jsonpath='{.data.password}' | base64 -d)
   PG_URL="postgres://unfraud:$pw@localhost:15432/unfraud" "$root/bin/casesapi" -brokers localhost:30092 -listen :18090 \

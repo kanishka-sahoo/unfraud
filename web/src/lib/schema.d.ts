@@ -595,7 +595,7 @@ export interface components {
             nodes: {
                 id: string;
                 /** @enum {string} */
-                kind: "card" | "device" | "tx";
+                kind: "payer" | "payee";
                 fraud: boolean;
                 super_node?: boolean;
                 community?: number;

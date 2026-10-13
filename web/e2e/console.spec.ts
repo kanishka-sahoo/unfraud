@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const profile = process.env.E2E_PROFILE ?? "elliptic";
+const profile = process.env.E2E_PROFILE ?? "amlworld";
 
 test.beforeEach(({ page }) => {
   page.on("pageerror", (e) => {
@@ -58,7 +58,7 @@ test("the live stream connects", async ({ page }) => {
 
 test("benchmarks show the generated results", async ({ page }) => {
   await page.goto("/benchmarks");
-  await expect(page.getByRole("heading", { name: /ieee-cis: LightGBM/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /tabformer: LightGBM/ })).toBeVisible();
   await expect(page.getByRole("img", { name: /Illicit F1 per test timestep/ })).toBeVisible();
   await expect(page.getByText("+ graph features")).toBeVisible();
 });

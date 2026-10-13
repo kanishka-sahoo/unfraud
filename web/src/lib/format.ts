@@ -8,8 +8,9 @@ export const actionLabel: Record<number, string> = { 0: "Approved", 1: "Sent to 
 export const stageLabel: Record<number, string> = { 1: "On arrival", 2: "Graph revision" };
 
 export const profileLabel: Record<string, string> = {
-  "ieee-cis": "IEEE-CIS card payments",
-  elliptic: "Elliptic Bitcoin",
+  tabformer: "TabFormer card payments",
+  sparkov: "Sparkov card payments",
+  amlworld: "AMLworld bank transfers",
   paysim: "PaySim mobile money",
 };
 

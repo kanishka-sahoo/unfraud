@@ -15,7 +15,7 @@ def evaluate_decisions(model_dir: Path, features_dir: Path) -> dict:
     manifest = json.loads((model_dir / "manifest.json").read_text())
     test_ids = pl.read_parquet(model_dir / "test_predictions.parquet", columns=["event_id"])
     labels = pl.read_parquet(features_dir / "labels.parquet", columns=["event_id", "label"])
-    amounts = pl.read_parquet(features_dir / "features.parquet", columns=["event_id", "TransactionAmt"])
+    amounts = pl.read_parquet(features_dir / "features.parquet", columns=["event_id", "amount_usd"])
     d = (
         pl.read_parquet(model_dir / "decisions.parquet")
         .join(test_ids, on="event_id")
@@ -24,7 +24,7 @@ def evaluate_decisions(model_dir: Path, features_dir: Path) -> dict:
     )
     fraud = pl.col("label") == 1
     total_fraud = d.filter(fraud).height
-    total_amount = d.filter(fraud)["TransactionAmt"].sum()
+    total_amount = d.filter(fraud)["amount_usd"].sum()
 
     def score(flag: pl.Expr) -> dict:
         f = d.filter(flag)
@@ -33,7 +33,7 @@ def evaluate_decisions(model_dir: Path, features_dir: Path) -> dict:
             "alert_rate": f.height / d.height,
             "precision": tp.height / max(f.height, 1),
             "recall": tp.height / total_fraud,
-            "dollar_recall": tp["TransactionAmt"].sum() / total_amount,
+            "dollar_recall": tp["amount_usd"].sum() / total_amount,
             "flagged": f.height,
         }
 

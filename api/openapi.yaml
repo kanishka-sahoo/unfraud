@@ -240,7 +240,7 @@ components:
             required: [id, kind, fraud]
             properties:
               id: { type: string }
-              kind: { type: string, enum: [card, device, tx] }
+              kind: { type: string, enum: [payer, payee] }
               fraud: { type: boolean }
               super_node: { type: boolean }
               community: { type: integer }

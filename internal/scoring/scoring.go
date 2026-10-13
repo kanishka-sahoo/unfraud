@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"time"
 
 	unfraudv1 "github.com/kanishka-sahoo/unfraud/gen/unfraud/v1"
@@ -27,6 +26,10 @@ type Config struct {
 	// ShadowDir, when set, loads a Shadow Model that scores every Event
 	// alongside the active one; its Decisions are recorded, never acted on.
 	ShadowDir string
+	// ScoreFromMs, when set, skips Decisions for Events before this Event
+	// Time; they still update feature and graph state. Accuracy Runs use it
+	// to score only the periods they evaluate.
+	ScoreFromMs int64
 }
 
 var DefaultConfig = Config{BlockBudget: "0.005", ReviewBudget: "0.02"}
@@ -84,24 +87,15 @@ type Scorer struct {
 	m             *model.Model
 	rules         *rules.Set
 	block, review float64
+	scoreFromMs   int64
 
 	ringOf    map[string]string     // Node -> active Ring
 	approved  map[string][]approval // Node -> recent approved Events
 	revisions []Revision
 
-	// waiting holds Events until their period closes, when the model needs
-	// flow features; nil otherwise.
-	waiting map[string]waitingEvent
-	closed  []*Decision
-
 	shadow                    *model.Model
 	shadowVersion             string
 	shadowBlock, shadowReview float64
-}
-
-type waitingEvent struct {
-	env *unfraudv1.Envelope
-	rt  []float64
 }
 
 type approval struct {
@@ -114,9 +108,7 @@ func New(p profile.Profile, st features.State, modelDir string, cfg Config, opts
 	if err != nil {
 		return nil, err
 	}
-	// Flow columns follow the real-time ones; a model that uses them can only
-	// score once an Event's period has closed.
-	m, err := model.Load(modelDir, p.Schema, append(eng.Columns(), eng.FlowColumns()...))
+	m, err := model.Load(modelDir, p.Schema, eng.Columns())
 	if err != nil {
 		return nil, err
 	}
@@ -124,9 +116,10 @@ func New(p profile.Profile, st features.State, modelDir string, cfg Config, opts
 	if err != nil {
 		return nil, err
 	}
-	s := &Scorer{p: p, eng: eng, m: m, rules: rs, ringOf: map[string]string{}, approved: map[string][]approval{}}
+	s := &Scorer{p: p, eng: eng, m: m, rules: rs, ringOf: map[string]string{}, approved: map[string][]approval{},
+		scoreFromMs: cfg.ScoreFromMs}
 	if cfg.ShadowDir != "" {
-		if s.shadow, err = model.Load(cfg.ShadowDir, p.Schema, append(eng.Columns(), eng.FlowColumns()...)); err != nil {
+		if s.shadow, err = model.Load(cfg.ShadowDir, p.Schema, eng.Columns()); err != nil {
 			return nil, fmt.Errorf("shadow model: %w", err)
 		}
 		if s.shadowVersion, err = ModelVersion(cfg.ShadowDir); err != nil {
@@ -137,12 +130,6 @@ func New(p profile.Profile, st features.State, modelDir string, cfg Config, opts
 		}
 		if s.shadowReview, err = s.shadow.Threshold(cfg.ReviewBudget); err != nil {
 			return nil, err
-		}
-	}
-	for _, c := range eng.FlowColumns() {
-		if slices.Contains(m.Features, c) {
-			s.waiting = map[string]waitingEvent{}
-			break
 		}
 	}
 	if s.block, err = m.Threshold(cfg.BlockBudget); err != nil {
@@ -185,26 +172,8 @@ func (s *Scorer) Process(ctx context.Context, env *unfraudv1.Envelope) (*Decisio
 	if rings := s.eng.Rings(); rings != nil {
 		s.applyRings(env.EventTimeMs, rings)
 	}
-	if s.waiting != nil {
-		for _, r := range s.eng.Revised() {
-			w, ok := s.waiting[r.EventID]
-			if !ok {
-				continue
-			}
-			delete(s.waiting, r.EventID)
-			d, err := s.decide(w.env, append(w.rt, r.Values...))
-			if err != nil {
-				return nil, err
-			}
-			s.closed = append(s.closed, d)
-		}
-	}
 	ev := env.GetEvent()
-	if ev == nil {
-		return nil, nil
-	}
-	if s.waiting != nil {
-		s.waiting[ev.EventId] = waitingEvent{env: env, rt: rt}
+	if ev == nil || env.EventTimeMs < s.scoreFromMs {
 		return nil, nil
 	}
 	d, err := s.decide(env, rt)
@@ -212,14 +181,6 @@ func (s *Scorer) Process(ctx context.Context, env *unfraudv1.Envelope) (*Decisio
 		d.Degraded = degraded
 	}
 	return d, err
-}
-
-// Closed returns Decisions for Events whose period closed since the last
-// call (models that use flow features only).
-func (s *Scorer) Closed() []*Decision {
-	d := s.closed
-	s.closed = nil
-	return d
 }
 
 func (s *Scorer) decide(env *unfraudv1.Envelope, rt []float64) (*Decision, error) {

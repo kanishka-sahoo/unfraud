@@ -31,7 +31,7 @@ type Valkey struct {
 	sweeping atomic.Bool
 }
 
-// NewValkey uses keys under prefix (for example "ieee-cis:") so several
+// NewValkey uses keys under prefix (for example "tabformer:") so several
 // Profiles or runs can share one server.
 func NewValkey(c valkey.Client, prefix string) *Valkey {
 	return &Valkey{c: c, prefix: prefix, expiry: prefix + "expiry"}

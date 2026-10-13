@@ -1,7 +1,7 @@
 // Package graph maintains a Profile's attribute graph over a sliding window
-// of Event Time and describes the Component an Event joins. Nodes (Card UIDs)
-// connect through shared Link attributes (Device Fingerprints); attributes
-// shared by too many Nodes are Super-nodes and never link.
+// of Event Time and describes the Component an Event joins. Nodes (payers)
+// connect through shared Link attributes (payees); attributes shared by too
+// many Nodes are Super-nodes and never link.
 //
 // Union-find cannot delete edges, so the graph is rebuilt from the window's
 // links every Rebuild interval and only grows in between. Everything is
@@ -18,21 +18,26 @@ import (
 
 // Columns names the features Process returns for an Event: the Component
 // (connected Nodes and Links) and the Community (its Louvain partition, which
-// matters because chains of shared devices merge thousands of cards into one
-// Component).
-var Columns = []string{"graph_cards", "graph_links", "graph_fraud_cards", "graph_community_cards", "graph_community_fraud"}
+// matters because chains of shared attributes merge thousands of Nodes into
+// one Component).
+var Columns = []string{"graph_nodes", "graph_links", "graph_fraud_nodes", "graph_community_nodes", "graph_community_fraud"}
 
-// Descriptions explains graph and flow feature columns for Case Packets.
-var Descriptions = map[string]string{
-	"graph_cards":           "cards connected to this card through shared devices (last 30 days)",
-	"graph_links":           "devices in that connected group",
-	"graph_fraud_cards":     "other cards in that group with confirmed fraud",
-	"graph_community_cards": "cards in this card's tightly linked community",
-	"graph_community_fraud": "other cards in that community with confirmed fraud",
-	"flow_in":               "payments into this transaction within its timestep",
-	"flow_out":              "payments out of this transaction within its timestep",
-	"flow_in2":              "transactions two payment hops upstream",
-	"flow_out2":             "transactions two payment hops downstream",
+// Describe explains a graph feature column for Case Packets.
+func Describe(cfg profile.GraphConfig, column string) (string, bool) {
+	n, l := cfg.NodeNoun, cfg.LinkNoun
+	switch column {
+	case "graph_nodes":
+		return fmt.Sprintf("%s connected to this one through shared %s (last %s)", n, l, profile.WindowLabel(cfg.Window)), true
+	case "graph_links":
+		return l + " in that connected group", true
+	case "graph_fraud_nodes":
+		return "other " + n + " in that group with confirmed fraud", true
+	case "graph_community_nodes":
+		return n + " in this one's tightly linked community", true
+	case "graph_community_fraud":
+		return "other " + n + " in that community with confirmed fraud", true
+	}
+	return "", false
 }
 
 type link struct {

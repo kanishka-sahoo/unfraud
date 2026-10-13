@@ -1,7 +1,7 @@
 // Command graphsvc is the single writer of a Profile's graph (ADR-0007). It
 // reads every partition of the input topic in Event Time order, keeps exact
 // in-memory feature and graph state, and writes Revised Decisions, made with
-// graph (IEEE-CIS) or flow (Elliptic) features, to revised.<profile>.
+// graph features, to revised.<profile>.
 //
 // It recovers by recomputation: on start it reads the input topic from the
 // beginning to rebuild state, and emits only for records after the offsets
@@ -84,7 +84,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	sc, err := scoring.New(p, features.NewMemory(), *modelDir, scoring.DefaultConfig,
-		features.WithGraph(p), features.WithFlow(p))
+		features.WithGraph(p))
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,6 @@ func run(log *slog.Logger) error {
 					continue
 				}
 				lastMs = in.env.EventTimeMs
-				closed := sc.Closed()
 				sc.Revisions() // Ring Revisions are reported by case-svc's stream, not here
 				next[in.rec.Partition] = in.rec.Offset + 1
 				eventTimeLag.WithLabelValues(p.Name).Set(float64(in.env.EventTimeMs) / 1000)
@@ -219,9 +218,6 @@ func run(log *slog.Logger) error {
 				}
 				if d != nil {
 					emit(d, in.rec.Timestamp)
-				}
-				for _, c := range closed {
-					emit(c, in.rec.Timestamp)
 				}
 			}
 			mu.Unlock()

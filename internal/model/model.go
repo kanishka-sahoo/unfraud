@@ -85,7 +85,9 @@ func Load(dir string, schema *profile.Schema, realtime []string) (*Model, error)
 		return nil, err
 	}
 	m := *mp
-	if m.SchemaID != schema.ID {
+	// Schema 0 marks a core model (internal/profile/payments): its features
+	// are shared by every payment Profile and bind by name.
+	if m.SchemaID != 0 && m.SchemaID != schema.ID {
 		return nil, fmt.Errorf("model %s was trained on schema %d, profile has %d", dir, m.SchemaID, schema.ID)
 	}
 	rt := make(map[string]int, len(realtime))

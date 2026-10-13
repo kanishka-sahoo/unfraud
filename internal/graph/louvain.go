@@ -71,29 +71,39 @@ func louvainLevel(g [][]wedge) (bool, []int) {
 		return false, comm
 	}
 	moved := false
-	links := make(map[int]float64)
+	// links[c] is the weight from the current node to community c; cands
+	// lists the communities it touched. A map would be simpler, but a map
+	// that grew for a hub keeps its size, and ranging over it then costs
+	// that much for every later node.
+	links := make([]float64, n)
+	touched := make([]bool, n)
 	var cands []int
 	for improved := true; improved; {
 		improved = false
 		for i := 0; i < n; i++ {
 			own := comm[i]
-			clear(links)
+			cands = cands[:0]
 			for _, e := range g[i] {
-				if e.to != i {
-					links[comm[e.to]] += e.w
+				if e.to == i {
+					continue
 				}
+				c := comm[e.to]
+				if !touched[c] {
+					touched[c] = true
+					cands = append(cands, c)
+				}
+				links[c] += e.w
 			}
 			tot[own] -= k[i]
-			cands = cands[:0]
-			for c := range links {
-				cands = append(cands, c)
-			}
 			slices.Sort(cands)
 			best, bestGain := own, links[own]-tot[own]*k[i]/m2
 			for _, c := range cands {
 				if gain := links[c] - tot[c]*k[i]/m2; gain > bestGain+1e-12 {
 					best, bestGain = c, gain
 				}
+			}
+			for _, c := range cands {
+				links[c], touched[c] = 0, false
 			}
 			tot[best] += k[i]
 			if best != own {

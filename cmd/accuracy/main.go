@@ -38,6 +38,7 @@ func run(log *slog.Logger) error {
 		out         = flag.String("out", "", "output folder (default: the model folder)")
 		limit       = flag.Int("limit", 0, "stop after this many dataset records; 0 = all")
 		ringPolicy  = flag.String("ring-policy", "", "override the Ring policy: minNodes,minFraud,minShare")
+		evaluated   = flag.Bool("evaluated-only", false, "decide only from the validation period on; earlier Events still build state")
 	)
 	flag.Parse()
 	p, err := registry.Get(*profileName)
@@ -57,7 +58,11 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	sc, err := scoring.New(p, features.NewMemory(), *modelDir, scoring.DefaultConfig, features.WithGraph(p), features.WithFlow(p))
+	cfg := scoring.DefaultConfig
+	if *evaluated {
+		cfg.ScoreFromMs = p.Split.Validation.UnixMilli()
+	}
+	sc, err := scoring.New(p, features.NewMemory(), *modelDir, cfg, features.WithGraph(p))
 	if err != nil {
 		return err
 	}
@@ -125,11 +130,6 @@ func (s *decisionSink) Send(ctx context.Context, o replay.Out) error {
 			return err
 		}
 		s.revisions++
-	}
-	for _, c := range s.sc.Closed() {
-		if err := s.write(c); err != nil {
-			return err
-		}
 	}
 	if d == nil {
 		return nil

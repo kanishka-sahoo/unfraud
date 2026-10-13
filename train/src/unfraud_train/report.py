@@ -7,10 +7,10 @@ import platform
 from pathlib import Path
 
 ROWS = [
-    ("static", "Model, static features"),
+    ("static", "Model, raw features (core + dataset extras)"),
     ("realtime", "+ real-time features"),
     ("graph", "+ graph features"),
-    ("realtime-uncapped", "+ real-time features, unlimited depth (reference, not served)"),
+    ("core", "Core features only (shared by every payment Profile)"),
 ]
 
 
@@ -26,8 +26,8 @@ def decisions_section(models: Path, features: Path | None) -> tuple[list[str], d
         "",
         "### Decisions (scorer Accuracy Run, served model)",
         "",
-        f"The scorer blocks above the {float(th['block_budget']):.1%}-budget threshold ({th['block']:.4f}) and sends to "
-        f"review above the {float(th['review_budget']):.0%}-budget threshold ({th['review']:.4f}); "
+        f"The scorer blocks above the {float(th['block_budget']):.1%}-budget threshold ({th['block']:.4g}) and sends to "
+        f"review above the {float(th['review_budget']):.0%}-budget threshold ({th['review']:.4g}); "
         "Rules can only escalate.",
         "",
         "| Decision source | Alert rate | Precision | Recall | $-recall |",
@@ -39,7 +39,11 @@ def decisions_section(models: Path, features: Path | None) -> tuple[list[str], d
     for k, label in names.items():
         r = ev[k]
         lines.append(f"| {label} | {r['alert_rate']:.2%} | {r['precision']:.1%} | {r['recall']:.1%} | {r['dollar_recall']:.1%} |")
-    lines += ["", "| Rule | Hits | Precision | Fraud caught |", "|---|---|---|---|"]
+    if not ev["per_rule"]:
+        lines += ["", "Every Rule is retired on this Profile: none was as precise on the validation period as the model "
+                  "at the review budget (`internal/profile/payments`)."]
+    else:
+        lines += ["", "| Rule | Hits | Precision | Fraud caught |", "|---|---|---|---|"]
     for code, r in ev["per_rule"].items():
         lines.append(f"| `{code}` | {r['hits']:,} | {r['precision']:.1%} | {r['fraud_caught']:,} |")
     return lines, ev
@@ -90,11 +94,8 @@ def system_run_section(out: Path) -> list[str]:
             "",
             "### End-to-end latency (live-paced replay)",
             "",
-            "The first 60,000 IEEE-CIS Events replayed at about 200 a second, timed from the Event entering Kafka to its "
-            "Decision being produced, with the full pipeline running and the scorer also evaluating its Shadow Model. "
-            "Scoring itself takes 3.6 ms at p50 and 11 ms at p95; the rest of the scorer's tail is time records wait for "
-            "Event Time alignment across partitions (with alignment off, p95 was 142 ms but Decision drift is 16 times "
-            "higher, ADR-0016). Expiry sweeps run in the background in 100-key batches so they never stall scoring.",
+            "Events replayed at a steady rate, timed from the Event entering Kafka to its Decision being produced, "
+            "with the full pipeline running.",
             "",
             "| Stage | Decisions | p50 | p95 | p99 | max |",
             "|---|---|---|---|---|---|",
@@ -127,10 +128,10 @@ def rings_section(models: Path, features: Path | None) -> list[str]:
 
     lines = [
         "",
-        "### Ring Alerts (rejected on the validation month)",
+        "### Ring Alerts",
         "",
-        "Policy: a Louvain Community with at least 3 cards, at least 2 of them with released fraud Labels. "
-        "Ring cards' later Events are flagged (`RING_MEMBER`) and their Events approved in the previous 7 days are "
+        "Policy: a Louvain Community with at least 3 Nodes, at least 2 of them with released fraud Labels. "
+        "Ring Nodes' later Events are flagged (`RING_MEMBER`) and their Events approved in the previous 7 days are "
         "revised. Only Events the graph model approved count. Each row is compared with flagging the same number of "
         "the model's highest-scoring approved Events instead.",
         "",
@@ -143,9 +144,6 @@ def rings_section(models: Path, features: Path | None) -> list[str]:
             a, b = r[key], r[key + "_baseline"]
             lines.append(f"| {label} | {name} | {a['alerts']:,} | {a['fraud']:,} | {a['precision']:.1%} | "
                          f"{b['fraud']:,} | {b['precision']:.1%} |")
-    lines += ["", "Stricter policies (fraud share ≥ 30% or 50%, or ≥ 3 fraud cards) produced at most 7 validation "
-              "alerts and no fraud. Ring Alerts are therefore off for IEEE-CIS; the graph contributes through its "
-              "features."]
     return lines
 
 
@@ -159,17 +157,18 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
         raise SystemExit(f"no models under {models}")
     first = next(iter(runs.values()))
     budgets = list(first["test_budgets"])
-    main = "0.05"
+    main = "0.005"
 
     lines = [
-        f"## {first['profile']}: LightGBM, time split (test = last month)",
+        f"## {first['profile']}: LightGBM, time split",
         "",
-        "Thresholds for each Alert Budget are set on the validation month and applied unchanged to the test month. "
-        f"Label delay {first['label_delay']}.",
+        "Thresholds for each Alert Budget are set on the validation period and applied unchanged to the test period, "
+        "so the share of test Events flagged can drift from the budget; the alert-rate column shows by how much. "
+        f"Label delay {next(iter(first['label_delay'].values()))}.",
         "",
         "| Configuration | PR-AUC | ROC-AUC | " + " | ".join(f"Recall @ {float(b):.1%}" for b in budgets)
-        + f" | $-recall @ {float(main):.0%} | Precision @ {float(main):.0%} | Trees |",
-        "|---|---|---|" + "---|" * len(budgets) + "---|---|---|",
+        + f" | Test alert rate @ {float(main):.1%} | $-recall @ {float(main):.1%} | Precision @ {float(main):.1%} | Trees |",
+        "|---|---|---|" + "---|" * len(budgets) + "---|---|---|---|",
     ]
     for name, label in ROWS:
         r = runs.get(name)
@@ -179,7 +178,7 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
         lines.append(
             f"| {label} | {t['pr_auc']:.4f} | {t['roc_auc']:.4f} | "
             + " | ".join(f"{tb[b]['recall']:.1%}" for b in budgets)
-            + f" | {tb[main].get('dollar_recall', float('nan')):.1%} | {tb[main]['precision']:.1%} | {r['best_iteration']} |"
+            + f" | {tb[main]['alert_rate']:.2%} | {tb[main]['dollar_recall']:.1%} | {tb[main]['precision']:.1%} | {r['best_iteration']} |"
         )
     ceilings = ", ".join(f"{float(b):.1%} → {first['test_budgets'][b]['recall_ceiling']:.0%}" for b in budgets)
     lines += ["", f"Recall ceilings (fraud a perfect model could catch at each budget): {ceilings}."]
@@ -187,8 +186,8 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
     lines += [
         "",
         "Split: " + ", ".join(f"{s} {v['events']:,} Events ({v['fraud'] / v['events']:.2%} fraud)" for s, v in split.items()) + ".",
-        f"Features table sha256 `{first['features_sha256'][:16]}…`, LightGBM {first['lightgbm_version']}, "
-        f"featurize at `{first['featurize_revision'][:12]}`.",
+        f"Features table sha256 `{next(iter(first['features_sha256'].values()))[:16]}…`, "
+        f"LightGBM {first['lightgbm_version']}, featurize at `{next(iter(first['featurize_revision'].values()))[:12]}`.",
     ]
     extra, decisions = decisions_section(models, features)
     lines += extra
@@ -208,5 +207,69 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
         "decisions": decisions,
     }
     out.with_suffix(".json").write_text(json.dumps(summary, indent=2) + "\n")
+    out.with_suffix(".md").write_text(table)
+    return table
+
+
+# Core models: one per Profile (models/<profile>/lgbm-core) and pooled ones
+# (models/pooled/<name>). Transfer results score a Profile a model never saw
+# (models/pooled/transfer/<model>__<profile>.json).
+POOLED = [
+    ("tabformer", "tabformer/lgbm-core"),
+    ("sparkov", "sparkov/lgbm-core"),
+    ("amlworld", "amlworld/lgbm-core"),
+    ("tabformer + sparkov", "pooled/cards"),
+    ("all three", "pooled/all"),
+]
+TARGETS = ["tabformer", "sparkov", "amlworld"]
+
+
+def report_pooled(models: Path, out: Path) -> str:
+    budget = "0.005"
+    cells: dict[str, dict[str, dict | None]] = {}
+    for label, rel in POOLED:
+        mpath = models / rel / "manifest.json"
+        if not mpath.exists():
+            continue
+        m = json.loads(mpath.read_text())
+        row = {}
+        for target in TARGETS:
+            if target in m["per_source"]:
+                row[target] = m["per_source"][target] | {"seen": True}
+            else:
+                t = models / "pooled" / "transfer" / f"{rel.replace('/', '_')}__{target}.json"
+                row[target] = json.loads(t.read_text()) | {"seen": False} if t.exists() else None
+        cells[label] = row
+    if not cells:
+        raise SystemExit(f"no core models under {models}")
+
+    def cell(r: dict | None) -> str:
+        if r is None:
+            return "–"
+        s = f"{r['test']['pr_auc']:.3f} / {r['test_budgets'][budget]['recall']:.0%}"
+        return s if r["seen"] else f"*{s}*"
+
+    lines = [
+        "## Core features: one model across datasets",
+        "",
+        "Every payment Profile maps its dataset onto the same core features (amount in USD, channel, merchant "
+        "category, hour, weekday) and computes the same real-time features (payer and payee velocity, unusual amounts, "
+        "new payees, released fraud Labels). A model trained on them binds to any payment Profile.",
+        "",
+        f"Each cell is test PR-AUC / recall at a {float(budget):.1%} Alert Budget. Italic cells are datasets the model "
+        "never saw in training, scored unchanged; thresholds always come from the scored dataset's own validation "
+        "period. Pooled models train on every listed dataset's training period at once.",
+        "",
+        "| Trained on | " + " | ".join(TARGETS) + " |",
+        "|---|" + "---|" * len(TARGETS),
+    ]
+    for label, row in cells.items():
+        lines.append(f"| {label} | " + " | ".join(cell(row[t]) for t in TARGETS) + " |")
+    base = {t: next((r[t]["test"] for r in cells.values() if r.get(t)), None) for t in TARGETS}
+    lines.append("| *(guessing: the test fraud rate)* | "
+                 + " | ".join(f"{b['fraud'] / b['events']:.3f} / 0.5%" if b else "–" for b in base.values()) + " |")
+    table = "\n".join(lines) + "\n"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.with_suffix(".json").write_text(json.dumps(cells, indent=2) + "\n")
     out.with_suffix(".md").write_text(table)
     return table

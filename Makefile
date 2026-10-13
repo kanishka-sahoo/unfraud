@@ -8,12 +8,12 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train parity report accuracy system-run check-cases fixtures build images deploy-model secrets console tailscale grafana cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train pooled parity report accuracy system-run check-cases fixtures build images deploy-model secrets console tailscale grafana cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
-data: ## Download datasets with your Kaggle credentials and verify checksums
+data: ## Download and normalize the datasets with your Kaggle credentials, then verify checksums
 	./scripts/fetch-data.sh
 
 gen: ## Regenerate Protobuf code
@@ -31,37 +31,52 @@ test: ## Run unit tests
 test-integration: ## Run tests against the cluster's Kafka (needs make cluster-up deploy)
 	UNFRAUD_KAFKA_BROKERS=localhost:30092 go test -count=1 ./...
 
-reset-topic: ## Delete and recreate a Profile's input topic: make reset-topic PROFILE=elliptic
+reset-topic: ## Delete and recreate a Profile's input topic: make reset-topic PROFILE=amlworld
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	kubectl -n $(NAMESPACE) delete kafkatopic input.$(PROFILE) --wait
 	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) --reset-then-reuse-values
 	kubectl -n $(NAMESPACE) wait kafkatopic/input.$(PROFILE) --for=condition=Ready --timeout=120s
 
-featurize: ## Accuracy Run to training tables: make featurize PROFILE=ieee-cis
+featurize: ## Accuracy Run to training tables: make featurize PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
-	go run ./cmd/featurize -profile $(PROFILE)
+	go build -o bin/featurize ./cmd/featurize # go run would not stamp the git revision
+	bin/featurize -profile $(PROFILE)
 
-train: ## Train every feature set of a Profile: make train PROFILE=ieee-cis
+train: ## Train every feature set of a Profile: make train PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
-	@for fs in $(if $(filter elliptic,$(PROFILE)),local flow dataset_agg,static realtime graph); do \
+	@for fs in core static realtime $(if $(filter sparkov,$(PROFILE)),,graph); do \
 	  uv run --project train unfraud-train train --features data/features/$(PROFILE) \
 	    --out models/$(PROFILE)/lgbm-$$fs --feature-set $$fs || exit 1; \
 	done
 
-parity: ## Check Go scores match Python on the test month: make parity PROFILE=ieee-cis [SET=realtime]
+pooled: ## Train pooled core models, score each Profile with models that never saw it, and report
+	uv run --project train unfraud-train train --features data/features/tabformer data/features/sparkov \
+	  --out models/pooled/cards --feature-set core
+	uv run --project train unfraud-train train --features data/features/tabformer data/features/sparkov \
+	  data/features/amlworld --out models/pooled/all --feature-set core
+	@for m in tabformer/lgbm-core sparkov/lgbm-core amlworld/lgbm-core pooled/cards; do \
+	  for p in tabformer sparkov amlworld; do \
+	    jq -e --arg p $$p '.sources | index($$p)' models/$$m/manifest.json >/dev/null && continue; \
+	    uv run --project train unfraud-train transfer --model models/$$m --features data/features/$$p \
+	      --out models/pooled/transfer/$$(echo $$m | tr / _)__$$p.json || exit 1; \
+	  done; \
+	done
+	uv run --project train unfraud-train report-pooled --out results/pooled-core
+
+parity: ## Check Go scores match Python on the test month: make parity PROFILE=tabformer [SET=realtime]
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	UNFRAUD_PARITY_MODEL=models/$(PROFILE)/lgbm-$(or $(SET),realtime) UNFRAUD_PARITY_FEATURES=data/features/$(PROFILE) \
-	  go test -count=1 -run TestParityWithPython -v ./internal/model/
+	  go test -count=1 -timeout 60m -run TestParityWithPython -v ./internal/model/
 
-report: ## Regenerate a Profile's results tables: make report PROFILE=ieee-cis
+report: ## Regenerate a Profile's results tables: make report PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	uv run --project train unfraud-train report --models models/$(PROFILE) --out results/$(PROFILE)-lightgbm --features data/features/$(PROFILE)
 
-accuracy: ## Accuracy Run through the scorer: make accuracy PROFILE=ieee-cis MODEL=lgbm-realtime
+accuracy: ## Accuracy Run through the scorer: make accuracy PROFILE=tabformer MODEL=lgbm-realtime
 	@test -n "$(PROFILE)" -a -n "$(MODEL)" || { echo "PROFILE and MODEL are required"; exit 1; }
 	go run ./cmd/accuracy -profile $(PROFILE) -model models/$(PROFILE)/$(MODEL)
 
-system-run: ## Score the whole input topic in the cluster from clean state and compare: make system-run PROFILE=ieee-cis
+system-run: ## Score the whole input topic in the cluster from clean state and compare: make system-run PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	./scripts/system-run.sh $(PROFILE) models/$(PROFILE)/lgbm-realtime/decisions.parquet results/$(PROFILE)-system-run-aligned.json
 
@@ -81,7 +96,7 @@ images: ## Build images and load them into the kind cluster
 	  kind load docker-image --name $(CLUSTER) unfraud/$$c:$(TAG); \
 	done
 
-deploy-model: ## Ship a model as an image and run it: make deploy-model PROFILE=ieee-cis [MODEL=lgbm-realtime] [SERVICE=scorer|graph]
+deploy-model: ## Ship a model as an image and run it: make deploy-model PROFILE=tabformer [MODEL=lgbm-realtime] [SERVICE=scorer|graph]
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	$(eval DIR := models/$(PROFILE)/$(or $(MODEL),lgbm-realtime))
 	$(eval IMG := unfraud/model-$(PROFILE):$(shell sha256sum $(DIR)/model.txt | cut -c1-12))
@@ -118,7 +133,7 @@ deploy: ## Install or upgrade the chart (VALUES=$(CHART)/values-full.yaml for fu
 kafka-wait:
 	kubectl -n $(NAMESPACE) wait kafka/unfraud --for=condition=Ready --timeout=600s
 
-replay: ## Replay a dataset into Kafka in the cluster: make replay PROFILE=elliptic [SPEED=0] [LIMIT=0]
+replay: ## Replay a dataset into Kafka in the cluster: make replay PROFILE=amlworld [SPEED=0] [LIMIT=0]
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	$(eval RUN := $(shell date +%Y%m%d%H%M%S))
 	helm template unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) \

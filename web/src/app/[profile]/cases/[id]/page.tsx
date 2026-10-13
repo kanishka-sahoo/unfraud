@@ -9,7 +9,7 @@ import { api, NotFound, type CaseDetail, type Schemas } from "@/lib/api";
 import { eventTime, pct } from "@/lib/format";
 
 /** The Entity type each Profile's graph is built on. */
-const graphNode: Record<string, string> = { "ieee-cis": "card_uid", elliptic: "tx" };
+const graphNode: Record<string, string> = { tabformer: "payer", amlworld: "payer" };
 
 export async function generateMetadata({ params }: PageProps<"/[profile]/cases/[id]">): Promise<Metadata> {
   const { id } = await params;

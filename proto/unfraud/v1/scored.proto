@@ -16,8 +16,7 @@ enum Stage {
   STAGE_UNSPECIFIED = 0;
   // On arrival, by the partition-parallel scorer (scored.<profile>).
   STAGE_PROVISIONAL = 1;
-  // By graph-svc, with graph or flow features (revised.<profile>). For
-  // Elliptic this happens when the Event's timestep closes.
+  // By graph-svc, with graph features (revised.<profile>).
   STAGE_REVISED = 2;
 }
 

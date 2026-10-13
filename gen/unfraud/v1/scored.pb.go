@@ -80,8 +80,7 @@ const (
 	Stage_STAGE_UNSPECIFIED Stage = 0
 	// On arrival, by the partition-parallel scorer (scored.<profile>).
 	Stage_STAGE_PROVISIONAL Stage = 1
-	// By graph-svc, with graph or flow features (revised.<profile>). For
-	// Elliptic this happens when the Event's timestep closes.
+	// By graph-svc, with graph features (revised.<profile>).
 	Stage_STAGE_REVISED Stage = 2
 )
 

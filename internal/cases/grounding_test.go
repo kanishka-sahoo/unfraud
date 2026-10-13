@@ -6,12 +6,12 @@ import (
 )
 
 var pk = Packet{
-	CaseID: "ieee-cis/2987001", Dataset: "ieee-cis", EventTime: "2017-12-02T00:00:00Z",
+	CaseID: "tabformer/2987001", Dataset: "tabformer", EventTime: "2017-12-02T00:00:00Z",
 	Decision: PacketDecision{Action: "block", Probability: 0.9873},
-	Entities: map[string]string{"card_uid": "2755_nan_nan", "device": "SAMSUNG|Android 7.0"},
+	Entities: map[string]string{"payer": "2755_nan_nan", "payee": "SAMSUNG|Android 7.0"},
 	Factors: []Factor{
-		{Feature: "card_fraud_labels_30d", Value: 3.0, Effect: 2.413},
-		{Feature: "TransactionAmt", Value: 1117.95, Effect: 0.512},
+		{Feature: "payer_fraud_labels_30d", Value: 3.0, Effect: 2.413},
+		{Feature: "amount_usd", Value: 1117.95, Effect: 0.512},
 	},
 }
 

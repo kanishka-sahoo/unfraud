@@ -1,0 +1,473 @@
+{
+  "profile": "tabformer",
+  "machine": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "python": "3.12.14"
+  },
+  "runs": {
+    "static": {
+      "feature_set": "static",
+      "best_iteration": 15,
+      "alert_budget": 0.005,
+      "threshold": 0.024279298332885675,
+      "label_delay": {
+        "tabformer": "720h0m0s"
+      },
+      "split": {
+        "train": {
+          "events": 5133655,
+          "fraud": 7115
+        },
+        "val": {
+          "events": 1721615,
+          "fraud": 2491
+        },
+        "test": {
+          "events": 1723938,
+          "fraud": 2087
+        }
+      },
+      "validation": {
+        "events": 1721615,
+        "fraud": 2491,
+        "pr_auc": 0.7117139150516818,
+        "roc_auc": 0.7810767855327878,
+        "alert_rate": 0.005000537286210913,
+        "recall": 0.7555198715375351,
+        "precision": 0.21860843303519573,
+        "dollar_recall": 0.7849924564361572
+      },
+      "test": {
+        "events": 1723938,
+        "fraud": 2087,
+        "pr_auc": 0.4569423788819753,
+        "roc_auc": 0.520945156362755,
+        "alert_rate": 0.004554108094374624,
+        "recall": 0.5146142788691902,
+        "precision": 0.13679786014520443,
+        "dollar_recall": 0.4741904139518738
+      },
+      "test_budgets": {
+        "0.001": {
+          "threshold": 0.5093229596859695,
+          "alert_rate": 0.0006624368161732034,
+          "recall": 0.4317201724964063,
+          "precision": 0.7889667250437828,
+          "recall_ceiling": 0.5471969333972209,
+          "dollar_recall": 0.46063026785850525
+        },
+        "0.005": {
+          "threshold": 0.024279298332885675,
+          "alert_rate": 0.004554108094374624,
+          "recall": 0.5146142788691902,
+          "precision": 0.13679786014520443,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.4741904139518738
+        },
+        "0.01": {
+          "threshold": 0.007849425540826684,
+          "alert_rate": 0.00964361827397505,
+          "recall": 0.5146142788691902,
+          "precision": 0.0646015037593985,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.4741904139518738
+        },
+        "0.02": {
+          "threshold": 0.002990693581853449,
+          "alert_rate": 0.019920089933628704,
+          "recall": 0.5146142788691902,
+          "precision": 0.031274569756268016,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.4741904139518738
+        }
+      },
+      "features_sha256": {
+        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
+      },
+      "featurize_revision": {
+        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
+      },
+      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "max_depth": 10,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    },
+    "realtime": {
+      "feature_set": "realtime",
+      "best_iteration": 1000,
+      "alert_budget": 0.005,
+      "threshold": 7.003954714729664e-05,
+      "label_delay": {
+        "tabformer": "720h0m0s"
+      },
+      "split": {
+        "train": {
+          "events": 5133655,
+          "fraud": 7115
+        },
+        "val": {
+          "events": 1721615,
+          "fraud": 2491
+        },
+        "test": {
+          "events": 1723938,
+          "fraud": 2087
+        }
+      },
+      "validation": {
+        "events": 1721615,
+        "fraud": 2491,
+        "pr_auc": 0.83372056191646,
+        "roc_auc": 0.9981141016382257,
+        "alert_rate": 0.005000537286210913,
+        "recall": 0.9429947812123645,
+        "precision": 0.2728539900104542,
+        "dollar_recall": 0.9525065422058105
+      },
+      "test": {
+        "events": 1723938,
+        "fraud": 2087,
+        "pr_auc": 0.7625119498036691,
+        "roc_auc": 0.9965271255174954,
+        "alert_rate": 0.004679982690792824,
+        "recall": 0.9089602299952084,
+        "precision": 0.235126425384234,
+        "dollar_recall": 0.9107820987701416
+      },
+      "test_budgets": {
+        "0.001": {
+          "threshold": 0.04672447355581509,
+          "alert_rate": 0.0007906316816498041,
+          "recall": 0.562050790608529,
+          "precision": 0.8606016140865738,
+          "recall_ceiling": 0.6530905606133206,
+          "dollar_recall": 0.6293715834617615
+        },
+        "0.005": {
+          "threshold": 7.003954714729664e-05,
+          "alert_rate": 0.004679982690792824,
+          "recall": 0.9089602299952084,
+          "precision": 0.235126425384234,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.9107820987701416
+        },
+        "0.01": {
+          "threshold": 1.3161047715235417e-05,
+          "alert_rate": 0.009719027018373051,
+          "recall": 0.9472927647340681,
+          "precision": 0.1179946284691137,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.9375631809234619
+        },
+        "0.02": {
+          "threshold": 2.8779962516192906e-06,
+          "alert_rate": 0.019794215337210503,
+          "recall": 0.971729755630091,
+          "precision": 0.05943031297620443,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.9693700671195984
+        }
+      },
+      "features_sha256": {
+        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
+      },
+      "featurize_revision": {
+        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
+      },
+      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "max_depth": 10,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    },
+    "graph": {
+      "feature_set": "graph",
+      "best_iteration": 999,
+      "alert_budget": 0.005,
+      "threshold": 6.315892251051586e-06,
+      "label_delay": {
+        "tabformer": "720h0m0s"
+      },
+      "split": {
+        "train": {
+          "events": 5133655,
+          "fraud": 7115
+        },
+        "val": {
+          "events": 1721615,
+          "fraud": 2491
+        },
+        "test": {
+          "events": 1723938,
+          "fraud": 2087
+        }
+      },
+      "validation": {
+        "events": 1721615,
+        "fraud": 2491,
+        "pr_auc": 0.6553911900836499,
+        "roc_auc": 0.9946167290801288,
+        "alert_rate": 0.005000537286210913,
+        "recall": 0.8338016860698515,
+        "precision": 0.24125914740387966,
+        "dollar_recall": 0.861157238483429
+      },
+      "test": {
+        "events": 1723938,
+        "fraud": 2087,
+        "pr_auc": 0.3457538907669418,
+        "roc_auc": 0.9821479900421745,
+        "alert_rate": 0.009975416749326251,
+        "recall": 0.7005270723526593,
+        "precision": 0.08501482816770367,
+        "dollar_recall": 0.7332109808921814
+      },
+      "test_budgets": {
+        "0.001": {
+          "threshold": 0.0006101092465680434,
+          "alert_rate": 0.0012500449552130064,
+          "recall": 0.38380450407283184,
+          "precision": 0.3716937354988399,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.37003475427627563
+        },
+        "0.005": {
+          "threshold": 6.315892251051586e-06,
+          "alert_rate": 0.009975416749326251,
+          "recall": 0.7005270723526593,
+          "precision": 0.08501482816770367,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.7332109808921814
+        },
+        "0.01": {
+          "threshold": 1.5910454197053671e-06,
+          "alert_rate": 0.0195558076914599,
+          "recall": 0.8001916626736943,
+          "precision": 0.049535787381722186,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.8285541534423828
+        },
+        "0.02": {
+          "threshold": 4.381198228287044e-07,
+          "alert_rate": 0.03627624659355499,
+          "recall": 0.8821274556780067,
+          "precision": 0.029438101634206404,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.8985291123390198
+        }
+      },
+      "features_sha256": {
+        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
+      },
+      "featurize_revision": {
+        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
+      },
+      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "max_depth": 10,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    },
+    "core": {
+      "feature_set": "core",
+      "best_iteration": 119,
+      "alert_budget": 0.005,
+      "threshold": 0.008961456717415033,
+      "label_delay": {
+        "tabformer": "720h0m0s"
+      },
+      "split": {
+        "train": {
+          "events": 5133655,
+          "fraud": 7115
+        },
+        "val": {
+          "events": 1721615,
+          "fraud": 2491
+        },
+        "test": {
+          "events": 1723938,
+          "fraud": 2087
+        }
+      },
+      "validation": {
+        "events": 1721615,
+        "fraud": 2491,
+        "pr_auc": 0.042709830495492006,
+        "roc_auc": 0.9248322676258957,
+        "alert_rate": 0.005000537286210913,
+        "recall": 0.15495784825371337,
+        "precision": 0.044836798699035896,
+        "dollar_recall": 0.17145340144634247
+      },
+      "test": {
+        "events": 1723938,
+        "fraud": 2087,
+        "pr_auc": 0.0171153680864282,
+        "roc_auc": 0.92244263156859,
+        "alert_rate": 0.0048528427356436254,
+        "recall": 0.11356013416387159,
+        "precision": 0.02832895051398518,
+        "dollar_recall": 0.14313353598117828
+      },
+      "test_budgets": {
+        "0.001": {
+          "threshold": 0.05868847865677282,
+          "alert_rate": 0.0009234670852432048,
+          "recall": 0.014853857211308098,
+          "precision": 0.019472361809045227,
+          "recall_ceiling": 0.7628174413033062,
+          "dollar_recall": 0.01455631572753191
+        },
+        "0.005": {
+          "threshold": 0.008961456717415033,
+          "alert_rate": 0.0048528427356436254,
+          "recall": 0.11356013416387159,
+          "precision": 0.02832895051398518,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.14313353598117828
+        },
+        "0.01": {
+          "threshold": 0.0037474612691909804,
+          "alert_rate": 0.00968306284796785,
+          "recall": 0.20891231432678486,
+          "precision": 0.02611873240280357,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.24849125742912292
+        },
+        "0.02": {
+          "threshold": 0.0015238329208170697,
+          "alert_rate": 0.0195940921309235,
+          "recall": 0.3598466698610446,
+          "precision": 0.022232748157139052,
+          "recall_ceiling": 1.0,
+          "dollar_recall": 0.4028702676296234
+        }
+      },
+      "features_sha256": {
+        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
+      },
+      "featurize_revision": {
+        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
+      },
+      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "lightgbm_version": "4.7.0",
+      "params": {
+        "objective": "binary",
+        "learning_rate": 0.1,
+        "num_leaves": 127,
+        "max_depth": 10,
+        "min_data_in_leaf": 100,
+        "feature_fraction": 0.5,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "lambda_l2": 1.0,
+        "max_bin": 255,
+        "metric": "average_precision",
+        "num_threads": 4,
+        "seed": 7,
+        "deterministic": true,
+        "force_row_wise": true,
+        "verbose": -1
+      }
+    }
+  },
+  "decisions": {
+    "rules": {
+      "alert_rate": 0.003040712601033216,
+      "precision": 0.15165967188096147,
+      "recall": 0.38092956396741734,
+      "dollar_recall": 0.34744007292396245,
+      "flagged": 5242
+    },
+    "model": {
+      "alert_rate": 0.019794215337210503,
+      "precision": 0.05943031297620443,
+      "recall": 0.971729755630091,
+      "dollar_recall": 0.9693701447261628,
+      "flagged": 34124
+    },
+    "combined": {
+      "alert_rate": 0.022223537041355317,
+      "precision": 0.05348193777406557,
+      "recall": 0.9817920459990417,
+      "dollar_recall": 0.9782234870587304,
+      "flagged": 38312
+    },
+    "model_equal_volume": {
+      "alert_rate": 0.021963666906814516,
+      "precision": 0.05371857173040355,
+      "recall": 0.9746046957355055,
+      "dollar_recall": 0.9706127554718895,
+      "flagged": 37864
+    },
+    "blocks": {
+      "alert_rate": 0.004679982690792824,
+      "precision": 0.235126425384234,
+      "recall": 0.9089602299952084,
+      "dollar_recall": 0.910782207533528,
+      "flagged": 8068
+    },
+    "per_rule": {
+      "FRAUD_PAYEE": {
+        "hits": 5242,
+        "precision": 0.15165967188096147,
+        "fraud_caught": 795
+      }
+    },
+    "events": 1723938,
+    "thresholds": {
+      "block_budget": "0.005",
+      "review_budget": "0.02",
+      "block": 7.003954714729664e-05,
+      "review": 2.8779962516192906e-06
+    }
+  }
+}

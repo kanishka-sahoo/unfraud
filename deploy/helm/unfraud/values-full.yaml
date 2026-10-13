@@ -7,9 +7,11 @@ kafka:
     limits: { memory: 2Gi }
 
 profiles:
-  - name: ieee-cis
+  - name: tabformer
+    partitions: 12
+  - name: sparkov
+    partitions: 12
+  - name: amlworld
     partitions: 12
   - name: paysim
-    partitions: 12
-  - name: elliptic
     partitions: 12

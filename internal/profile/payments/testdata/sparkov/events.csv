@@ -1,0 +1,4 @@
+event_id,event_time_ms,payer,payee,customer,amount_usd,channel,category,is_fraud,gender,home_state,city_pop,job,customer_age,merchant_km
+0b242abb623afc578575680df30655b9,1546214418000,2703186189652095,"Rippin, Kub and Mann",2703186189652095,4.97,online,misc,0,F,NC,3495.0,"Psychologist, counselling",30.0,78.59756848823062
+1f76529f8574734946361c461b024d99,1546214444000,630423337322,"Heller, Gutmann and Zieme",630423337322,107.23,in_person,grocery,0,F,WA,149.0,Special educational needs teacher,40.0,30.212175719210443
+e8a81877ae9a0a7f883e15cb39dc4022,1546304797000,4613314721966,Rutherford-Mertz,,281.06,,grocery,1,M,NC,885.0,Soil scientist,31.0,

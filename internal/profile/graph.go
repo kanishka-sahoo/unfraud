@@ -7,10 +7,13 @@ import "time"
 // Device Fingerprint). Attributes shared by more than MaxDegree Nodes within
 // the Window are Super-nodes and never link.
 type GraphConfig struct {
-	Node      string
-	Links     []string
-	MaxDegree int
-	Window    time.Duration
+	Node  string
+	Links []string
+	// NodeNoun and LinkNoun name Nodes and Link attributes in plural, for
+	// feature descriptions: "cards", "merchants".
+	NodeNoun, LinkNoun string
+	MaxDegree          int
+	Window             time.Duration
 	// Rebuild is how often, in Event Time, the graph is rebuilt from the
 	// Window's links; between rebuilds links are only added.
 	Rebuild time.Duration
@@ -21,13 +24,4 @@ type GraphConfig struct {
 	// released fraud Labels. RingMinNodes 0 disables Rings.
 	RingMinNodes, RingMinFraud int
 	RingMinShare               float64
-}
-
-// FlowConfig describes a dataset-supplied flow graph (Elliptic): Events are
-// Nodes and Links are payments between them, complete only when a period
-// closes. Aggregate lists numeric features averaged over each Node's
-// neighbours.
-type FlowConfig struct {
-	Node      string
-	Aggregate []string
 }

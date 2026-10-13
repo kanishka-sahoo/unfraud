@@ -11,11 +11,11 @@ import (
 	"github.com/valkey-io/valkey-go"
 
 	"github.com/kanishka-sahoo/unfraud/internal/features"
-	"github.com/kanishka-sahoo/unfraud/internal/profile/ieeecis"
+	"github.com/kanishka-sahoo/unfraud/internal/profile/payments"
 	"github.com/kanishka-sahoo/unfraud/internal/replay"
 )
 
-// TestValkeyMatchesMemory replays IEEE-CIS through two engines, one on each
+// TestValkeyMatchesMemory replays TabFormer through two engines, one on each
 // State, delivering every record twice, and requires bit-identical features. It needs a Valkey server
 // (UNFRAUD_VALKEY_ADDR=localhost:6390) and the dataset in data/raw.
 func TestValkeyMatchesMemory(t *testing.T) {
@@ -23,9 +23,9 @@ func TestValkeyMatchesMemory(t *testing.T) {
 	if addr == "" {
 		t.Skip("UNFRAUD_VALKEY_ADDR not set")
 	}
-	dir := "../../data/raw/ieee-cis"
+	dir := "../../data/raw/tabformer"
 	if _, err := os.Stat(dir); err != nil {
-		t.Skip("IEEE-CIS data not downloaded")
+		t.Skip("TabFormer data not prepared")
 	}
 	c, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{addr}})
 	if err != nil {
@@ -34,7 +34,7 @@ func TestValkeyMatchesMemory(t *testing.T) {
 	defer c.Close()
 	prefix := fmt.Sprintf("test-%d:", time.Now().UnixNano())
 
-	p := ieeecis.Profile
+	p := payments.TabFormer
 	mem, err := features.New(p, features.NewMemory())
 	if err != nil {
 		t.Fatal(err)
