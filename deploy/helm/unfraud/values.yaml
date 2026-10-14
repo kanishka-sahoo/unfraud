@@ -31,12 +31,6 @@ kafka:
 profiles:
   - name: tabformer
     partitions: 3
-  - name: sparkov
-    partitions: 3
-  - name: amlworld
-    partitions: 3
-  - name: paysim
-    partitions: 3
 
 valkey:
   image: valkey/valkey:8.1-alpine

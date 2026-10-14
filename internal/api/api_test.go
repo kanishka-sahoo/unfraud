@@ -137,7 +137,7 @@ func (f *fakeReplays) Start(_ context.Context, r ReplayRequest) (Replay, error) 
 func TestOneReplayAtATime(t *testing.T) {
 	srv := testServer(t, &fakeReplays{})
 	start := func() int {
-		res, _ := http.Post(srv.URL+"/api/replays", "application/json", strings.NewReader(`{"profile":"amlworld","speed":100}`))
+		res, _ := http.Post(srv.URL+"/api/replays", "application/json", strings.NewReader(`{"profile":"tabformer","speed":100}`))
 		res.Body.Close()
 		return res.StatusCode
 	}

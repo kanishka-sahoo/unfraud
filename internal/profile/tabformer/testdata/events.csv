@@ -1,0 +1,4 @@
+event_id,event_time_ms,payer,payee,customer,amount_usd,channel,category,is_fraud,entry_mode,mcc,errors,merchant_state,abroad,out_of_home_state,card_brand,card_type,card_has_chip,credit_limit,customer_age,yearly_income,fico_score
+9973960,1412121720000,841-2,1913477460590765860,841,79.73,in_person,grocery,0,swipe,5300,,OH,0.0,0.0,mastercard,debit,1.0,24819.0,57.0,37556.0,735.0
+11994637,1412121900000,989-2,6698459923198770712,989,248.72,in_person,home,0,swipe,4814,,MI,0.0,0.0,mastercard,credit,1.0,8900.0,54.0,31550.0,710.0
+22202151,1427710380000,1810-2,-4282466774399734331,,8.65,online,misc,1,online,4829,,,,,mastercard,credit,1.0,9600.0,58.0,29769.0,693.0

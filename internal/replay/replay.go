@@ -55,7 +55,7 @@ type Stats struct {
 // Run replays a dataset into sink. events and labels must be two independent
 // Sources over the same dataset: labels trails events by the label delay and
 // supplies the Label Releases, so memory stays constant however many Labels
-// are pending (PaySim peaks at 2.9M with a 7-day delay).
+// are pending.
 func Run(ctx context.Context, profileName string, events, labels profile.Source, sink Sink, opt Options) (Stats, error) {
 	if opt.WatermarkInterval <= 0 {
 		return Stats{}, errors.New("replay: watermark interval must be positive")

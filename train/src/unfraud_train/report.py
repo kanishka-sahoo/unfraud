@@ -7,10 +7,9 @@ import platform
 from pathlib import Path
 
 ROWS = [
-    ("static", "Model, raw features (core + dataset extras)"),
+    ("static", "Model, raw features"),
     ("realtime", "+ real-time features"),
     ("graph", "+ graph features"),
-    ("core", "Core features only (shared by every payment Profile)"),
 ]
 
 
@@ -164,7 +163,7 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
         "",
         "Thresholds for each Alert Budget are set on the validation period and applied unchanged to the test period, "
         "so the share of test Events flagged can drift from the budget; the alert-rate column shows by how much. "
-        f"Label delay {next(iter(first['label_delay'].values()))}.",
+        f"Label delay {first['label_delay']}.",
         "",
         "| Configuration | PR-AUC | ROC-AUC | " + " | ".join(f"Recall @ {float(b):.1%}" for b in budgets)
         + f" | Test alert rate @ {float(main):.1%} | $-recall @ {float(main):.1%} | Precision @ {float(main):.1%} | Trees |",
@@ -186,8 +185,8 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
     lines += [
         "",
         "Split: " + ", ".join(f"{s} {v['events']:,} Events ({v['fraud'] / v['events']:.2%} fraud)" for s, v in split.items()) + ".",
-        f"Features table sha256 `{next(iter(first['features_sha256'].values()))[:16]}…`, "
-        f"LightGBM {first['lightgbm_version']}, featurize at `{next(iter(first['featurize_revision'].values()))[:12]}`.",
+        f"Features table sha256 `{first['features_sha256'][:16]}…`, LightGBM {first['lightgbm_version']}, "
+        f"featurize at `{first['featurize_revision'][:12]}`.",
     ]
     extra, decisions = decisions_section(models, features)
     lines += extra
@@ -210,66 +209,3 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
     out.with_suffix(".md").write_text(table)
     return table
 
-
-# Core models: one per Profile (models/<profile>/lgbm-core) and pooled ones
-# (models/pooled/<name>). Transfer results score a Profile a model never saw
-# (models/pooled/transfer/<model>__<profile>.json).
-POOLED = [
-    ("tabformer", "tabformer/lgbm-core"),
-    ("sparkov", "sparkov/lgbm-core"),
-    ("amlworld", "amlworld/lgbm-core"),
-    ("tabformer + sparkov", "pooled/cards"),
-    ("all three", "pooled/all"),
-]
-TARGETS = ["tabformer", "sparkov", "amlworld"]
-
-
-def report_pooled(models: Path, out: Path) -> str:
-    budget = "0.005"
-    cells: dict[str, dict[str, dict | None]] = {}
-    for label, rel in POOLED:
-        mpath = models / rel / "manifest.json"
-        if not mpath.exists():
-            continue
-        m = json.loads(mpath.read_text())
-        row = {}
-        for target in TARGETS:
-            if target in m["per_source"]:
-                row[target] = m["per_source"][target] | {"seen": True}
-            else:
-                t = models / "pooled" / "transfer" / f"{rel.replace('/', '_')}__{target}.json"
-                row[target] = json.loads(t.read_text()) | {"seen": False} if t.exists() else None
-        cells[label] = row
-    if not cells:
-        raise SystemExit(f"no core models under {models}")
-
-    def cell(r: dict | None) -> str:
-        if r is None:
-            return "–"
-        s = f"{r['test']['pr_auc']:.3f} / {r['test_budgets'][budget]['recall']:.0%}"
-        return s if r["seen"] else f"*{s}*"
-
-    lines = [
-        "## Core features: one model across datasets",
-        "",
-        "Every payment Profile maps its dataset onto the same core features (amount in USD, channel, merchant "
-        "category, hour, weekday) and computes the same real-time features (payer and payee velocity, unusual amounts, "
-        "new payees, released fraud Labels). A model trained on them binds to any payment Profile.",
-        "",
-        f"Each cell is test PR-AUC / recall at a {float(budget):.1%} Alert Budget. Italic cells are datasets the model "
-        "never saw in training, scored unchanged; thresholds always come from the scored dataset's own validation "
-        "period. Pooled models train on every listed dataset's training period at once.",
-        "",
-        "| Trained on | " + " | ".join(TARGETS) + " |",
-        "|---|" + "---|" * len(TARGETS),
-    ]
-    for label, row in cells.items():
-        lines.append(f"| {label} | " + " | ".join(cell(row[t]) for t in TARGETS) + " |")
-    base = {t: next((r[t]["test"] for r in cells.values() if r.get(t)), None) for t in TARGETS}
-    lines.append("| *(guessing: the test fraud rate)* | "
-                 + " | ".join(f"{b['fraud'] / b['events']:.3f} / 0.5%" if b else "–" for b in base.values()) + " |")
-    table = "\n".join(lines) + "\n"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.with_suffix(".json").write_text(json.dumps(cells, indent=2) + "\n")
-    out.with_suffix(".md").write_text(table)
-    return table

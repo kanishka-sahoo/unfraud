@@ -1,6 +1,6 @@
 # unfraud
 
-A real-time fraud detection engine. It scores payment and transfer events as they arrive, links entities into a graph to surface coordinated fraud rings, and turns each flag into a case for an analyst to review. Every published number is reproducible from public datasets.
+A real-time fraud detection engine. It scores card payments as they arrive, links entities into a graph to surface coordinated fraud rings, and turns each flag into a case for an analyst to review. Every published number is reproducible from a public dataset.
 
 ## Language
 
@@ -14,16 +14,8 @@ _Avoid_: Tenant, domain, dataset config
 The ordered list of numeric and categorical feature names a Profile's Events carry. Events send feature values by position in this list.
 _Avoid_: Feature set, columns
 
-**Payment Schema**:
-The normalized form every payment dataset is prepared into (`events.csv`): the core columns, which mean the same in every dataset, followed by the dataset's own named extras.
-_Avoid_: Common format, unified dataset
-
-**Core Features**:
-The features every payment Profile shares by name and meaning: amount in USD, channel, merchant category, hour, weekday, and the real-time features built on them. A Core Model uses only these, so it can score any payment Profile.
-_Avoid_: Common features, shared columns
-
 **Event**:
-One scorable unit in the standard schema, carrying an event time, Entities and features: a card payment (TabFormer, Sparkov, PaySim) or a bank transfer (AMLworld).
+One scorable unit in the standard schema, carrying an event time, Entities and features. In TabFormer it is a card payment.
 _Avoid_: Transaction (ambiguous across profiles), message, record
 
 **Entity**:
@@ -31,15 +23,15 @@ A thing that Events refer to and that features are counted against: a Payer, a P
 _Avoid_: Key
 
 **Payer**:
-The instrument that pays: a card, or the bank account money leaves.
-_Avoid_: Sender, source, card (except in card datasets)
+The instrument that pays. In TabFormer, a card (user and card index).
+_Avoid_: Sender, source
 
 **Payee**:
-Who is paid: a merchant, or the bank account money arrives in.
-_Avoid_: Receiver, destination, merchant (except in card datasets)
+Who is paid. In TabFormer, a merchant.
+_Avoid_: Receiver, destination
 
 **Customer**:
-Who owns the Payer: a cardholder, or the legal entity behind a bank account. One Customer can have several Payers.
+Who owns the Payer. In TabFormer, the cardholder, who can have several cards.
 _Avoid_: User, account holder
 
 **Event Time**:
@@ -109,7 +101,7 @@ _Avoid_: Graph alert
 ### Labels and review
 
 **Label**:
-The dataset's ground truth for an Event: fraud or legitimate. In AMLworld, laundering stands in for fraud.
+The dataset's ground truth for an Event: fraud or legitimate.
 _Avoid_: Tag, class
 
 **Label Release**:

@@ -4,7 +4,7 @@ import { api, type Benchmark } from "@/lib/api";
 
 export const metadata = { title: "Benchmarks" };
 
-const order = ["pooled-core", "tabformer-lightgbm", "sparkov-lightgbm", "amlworld-lightgbm", "summaries-stub"];
+const order = ["tabformer-lightgbm", "summaries-stub"];
 
 export default function BenchmarksPage() {
   return (
@@ -12,7 +12,7 @@ export default function BenchmarksPage() {
       <div className="page-head">
         <div>
           <h1>Benchmarks</h1>
-          <p>Every number here is regenerated from public datasets by the commands in the repository; nothing is typed by hand.</p>
+          <p>Every number here is regenerated from a public dataset by the commands in the repository; nothing is typed by hand.</p>
         </div>
       </div>
       <Suspense fallback={<p className="skeleton">Loading results…</p>}>

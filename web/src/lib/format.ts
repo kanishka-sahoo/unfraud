@@ -9,9 +9,6 @@ export const stageLabel: Record<number, string> = { 1: "On arrival", 2: "Graph r
 
 export const profileLabel: Record<string, string> = {
   tabformer: "TabFormer card payments",
-  sparkov: "Sparkov card payments",
-  amlworld: "AMLworld bank transfers",
-  paysim: "PaySim mobile money",
 };
 
 /** A percentage that never rounds up to certainty or down to impossibility. */

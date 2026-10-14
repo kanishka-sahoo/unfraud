@@ -1,6 +1,6 @@
 # Named synthetic payment datasets, normalized into one Payment Schema
 
-Supersedes [ADR-0001](./0001-dataset-roles.md).
+Supersedes [ADR-0001](./0001-dataset-roles.md). Its dataset choice is superseded by [ADR-0019](./0019-tabformer-only.md).
 
 IEEE-CIS and Elliptic were real but masked: most of their columns (V1–V339, C, D, M, id_*, Elliptic's 165 features) had no published meaning, so a Case could only report "the combined effect of masked features", rules could only use the handful of documented columns, and nothing learned on one dataset could be checked on another. Public payment data with readable columns exists only as simulations, so we accept synthetic data in exchange for meaning:
 

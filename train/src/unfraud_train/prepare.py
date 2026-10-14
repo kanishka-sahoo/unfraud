@@ -1,20 +1,11 @@
-"""Normalizing raw payment datasets into the Payment Schema.
+"""Preparing TabFormer for the engine.
 
-Every payment Profile reads one file, <raw>/<profile>/events.csv, sorted by
-Event Time. It starts with the core columns, which mean the same thing in
-every dataset, followed by the dataset's own named extras:
-
-    event_id, event_time_ms, payer, payee, customer, amount_usd, channel,
-    category, is_fraud, <extras...>
-
-- payer: the paying instrument (a card, or a source bank account)
-- payee: who is paid (a merchant, or a destination bank account)
-- customer: who owns the payer (a cardholder, or the account's legal entity)
-- channel: in_person or online for cards; the payment format for transfers
-- category: what was bought, in Sparkov's vocabulary (TabFormer's MCCs are
-  mapped onto it); empty for bank transfers
-
-The output is deterministic, so its checksum is recorded with the raw files'.
+The raw files are sorted by card, not time, and spread over three files.
+prepare writes <raw>/tabformer/events.csv: one row per transaction in Event
+Time order, with the card (payer), merchant (payee), cardholder (customer),
+amount, channel, a merchant category, the label, then the card's and
+cardholder's attributes. The output is deterministic, so its checksum is
+recorded with the raw files'.
 """
 
 from __future__ import annotations
@@ -23,9 +14,7 @@ from pathlib import Path
 
 import polars as pl
 
-CORE = ["event_id", "event_time_ms", "payer", "payee", "customer", "amount_usd", "channel", "category", "is_fraud"]
-
-# Merchant Category Codes in TabFormer, mapped onto Sparkov's categories.
+# Merchant Category Codes grouped into 11 categories.
 # Ranges first: 3000-3299 airlines, 3300-3499 car rental, 3500-3999 hotels.
 MCC_CATEGORY = {
     1711: "home", 4111: "gas_transport", 4112: "travel", 4121: "gas_transport", 4131: "gas_transport",
@@ -49,16 +38,6 @@ US_STATES = set(
     "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND "
     "OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split()
 )
-
-# AMLworld pays in 15 currencies at fixed simulator rates (units per US
-# dollar): the medians of its transfers between US dollars and each
-# currency, which agree in both directions. Bitcoin's rate drifts (±13%).
-USD_RATE = {
-    "US Dollar": 1.0, "Euro": 0.8534, "UK Pound": 0.7742, "Swiss Franc": 0.915, "Yuan": 6.6976, "Yen": 105.4,
-    "Rupee": 73.444, "Ruble": 77.804, "Canadian Dollar": 1.3193, "Australian Dollar": 1.4128,
-    "Mexican Peso": 21.1431, "Brazil Real": 5.6465, "Shekel": 3.377, "Saudi Riyal": 3.7511, "Bitcoin": 0.0000842,
-}
-
 
 def _money(col: str) -> pl.Expr:
     return pl.col(col).str.replace(r"^\$", "").cast(pl.Float64)
@@ -135,99 +114,9 @@ def tabformer(raw: Path) -> pl.LazyFrame:
     )
 
 
-def sparkov(raw: Path) -> pl.LazyFrame:
-    """Sparkov (Kaggle "Credit Card Transactions Fraud Detection"): 1,000
-    simulated cardholders, January 2019 to December 2020.
-
-    Event Time comes from unix_time, which the simulator counts from 2012:
-    its date strings repeat 2019-02-28 for 2012's leap day, so they are not
-    ordered. Shifting unix_time to match the strings from March 2019 on
-    places January and February 2019 one day early.
-    """
-    frames = [pl.scan_csv(raw / f, schema_overrides={"cc_num": pl.Utf8, "zip": pl.Utf8})
-              for f in ("fraudTrain.csv", "fraudTest.csv")]
-    shift_s = 220_838_400
-    cat = pl.col("category")
-    t = pl.from_epoch(pl.col("unix_time") + shift_s, time_unit="s")
-    lat1, lon1, lat2, lon2 = (pl.col(c).radians() for c in ("lat", "long", "merch_lat", "merch_long"))
-    hav = ((lat2 - lat1) / 2).sin() ** 2 + lat1.cos() * lat2.cos() * ((lon2 - lon1) / 2).sin() ** 2
-    return (
-        pl.concat(frames)
-        .with_row_index("row")
-        .sort(["unix_time", "row"])
-        .select(
-            pl.col("trans_num").alias("event_id"),
-            ((pl.col("unix_time") + shift_s) * 1000).alias("event_time_ms"),
-            pl.col("cc_num").alias("payer"),
-            pl.col("merchant").str.strip_prefix("fraud_").alias("payee"),
-            pl.col("cc_num").alias("customer"),
-            pl.col("amt").cast(pl.Float64).alias("amount_usd"),
-            pl.when(cat.str.ends_with("_net")).then(pl.lit("online"))
-            .when(cat.str.ends_with("_pos")).then(pl.lit("in_person")).alias("channel"),
-            cat.str.replace(r"_(net|pos)$", "").alias("category"),
-            pl.col("is_fraud").cast(pl.Int8),
-            # Extras.
-            pl.col("gender"),
-            pl.col("state").alias("home_state"),
-            pl.col("city_pop").cast(pl.Float64),
-            pl.col("job"),
-            (t.dt.year() - pl.col("dob").str.slice(0, 4).cast(pl.Int32)).cast(pl.Float64).alias("customer_age"),
-            (2 * 6371.0 * hav.sqrt().arcsin()).alias("merchant_km"),
-        )
-    )
-
-
-def amlworld(raw: Path) -> pl.LazyFrame:
-    """IBM AMLworld HI-Small: bank transfers in a simulated economy, with
-    laundering labelled. Transfers from 2022-09-11 on are dropped: after ten
-    days of normal traffic the simulator only finishes laundering attempts
-    (1,108 transfers, 59% laundering)."""
-    names = ["ts", "from_bank", "from_account", "to_bank", "to_account", "amount_received", "receiving_currency",
-             "amount_paid", "payment_currency", "payment_format", "is_laundering"]
-    tx = pl.scan_csv(raw / "HI-Small_Trans.csv", has_header=False, skip_rows=1, new_columns=names,
-                     schema_overrides={n: pl.Utf8 for n in names})
-    owners = (pl.scan_csv(raw / "HI-Small_accounts.csv", infer_schema=False)
-              .select(pl.col("Account Number").alias("account"), pl.col("Entity ID").alias("entity"))
-              .unique("account", keep="first"))
-    t = pl.col("ts").str.to_datetime("%Y/%m/%d %H:%M")
-    payer = pl.format("{}-{}", "from_bank", "from_account")
-    payee = pl.format("{}-{}", "to_bank", "to_account")
-    paid = pl.col("amount_paid").cast(pl.Float64)
-    return (
-        tx.with_row_index("row")
-        .with_columns(t=t)
-        .filter(pl.col("t") < pl.datetime(2022, 9, 11))
-        .join(owners.rename({"account": "from_account", "entity": "payer_entity"}), on="from_account", how="left")
-        .join(owners.rename({"account": "to_account", "entity": "payee_entity"}), on="to_account", how="left")
-        .sort(["t", "row"])
-        .select(
-            pl.col("row").cast(pl.Utf8).alias("event_id"),
-            pl.col("t").dt.epoch("ms").alias("event_time_ms"),
-            payer.alias("payer"),
-            payee.alias("payee"),
-            pl.col("payer_entity").alias("customer"),
-            (paid / pl.col("payment_currency").replace_strict(USD_RATE, return_dtype=pl.Float64)).alias("amount_usd"),
-            pl.col("payment_format").str.to_lowercase().str.replace(" ", "_").alias("channel"),
-            pl.lit(None, dtype=pl.Utf8).alias("category"),
-            pl.col("is_laundering").cast(pl.Int8).alias("is_fraud"),
-            # Extras.
-            pl.col("payment_currency"),
-            pl.col("receiving_currency"),
-            (pl.col("payment_currency") != pl.col("receiving_currency")).cast(pl.Float64).alias("cross_currency"),
-            (payer == payee).cast(pl.Float64).alias("self_transfer"),
-            (pl.col("from_bank") == pl.col("to_bank")).cast(pl.Float64).alias("same_bank"),
-            (pl.col("payer_entity") == pl.col("payee_entity")).cast(pl.Float64).alias("same_owner"),
-        )
-    )
-
-
-DATASETS = {"tabformer": tabformer, "sparkov": sparkov, "amlworld": amlworld}
-
-
-def prepare(raw_root: Path, profile: str) -> Path:
-    lf = DATASETS[profile](raw_root / profile)
-    assert lf.collect_schema().names()[: len(CORE)] == CORE
-    out = raw_root / profile / "events.csv"
+def prepare(raw_root: Path) -> Path:
+    lf = tabformer(raw_root / "tabformer")
+    out = raw_root / "tabformer" / "events.csv"
     tmp = out.with_suffix(".csv.tmp")
     lf.sink_csv(tmp, float_precision=None, engine="streaming", maintain_order=True)
     tmp.rename(out)

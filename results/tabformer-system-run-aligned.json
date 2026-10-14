@@ -1,0 +1,17 @@
+{
+  "topic": "scored.tabformer",
+  "elapsed_seconds": 2999,
+  "events_per_second": 500,
+  "compared": 1500000,
+  "missing_from_accuracy_run": 0,
+  "duplicates": 0,
+  "probability_differs": 92106,
+  "max_abs_probability_diff": 0.1333651840686798,
+  "mean_abs_probability_diff": 2.609832035650809e-7,
+  "p99_abs_probability_diff": 1.4291332561811032e-9,
+  "action_differs": 147,
+  "end_to_end_latency_p50_ms": 63776626,
+  "end_to_end_latency_p95_ms": 65143671,
+  "end_to_end_latency_p99_ms": 65269558,
+  "end_to_end_latency_max_ms": 65302049
+}

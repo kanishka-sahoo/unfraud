@@ -59,7 +59,6 @@ test("the live stream connects", async ({ page }) => {
 test("benchmarks show the generated results", async ({ page }) => {
   await page.goto("/benchmarks");
   await expect(page.getByRole("heading", { name: /tabformer: LightGBM/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /one model across datasets/ })).toBeVisible();
   await expect(page.getByText("+ graph features").first()).toBeVisible();
 });
 

@@ -9,9 +9,3 @@ kafka:
 profiles:
   - name: tabformer
     partitions: 12
-  - name: sparkov
-    partitions: 12
-  - name: amlworld
-    partitions: 12
-  - name: paysim
-    partitions: 12

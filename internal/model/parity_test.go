@@ -50,9 +50,6 @@ func TestParityWithPython(t *testing.T) {
 	}
 	idCol, _ := pr.Index("event_id")
 	scoreCol, _ := pr.Index("raw_score")
-	// A pooled model's predictions cover several Profiles, whose event ids
-	// may coincide; keep this Profile's.
-	srcCol, pooled := pr.Index("source")
 	for {
 		row, err := pr.Next()
 		if err == io.EOF {
@@ -60,9 +57,6 @@ func TestParityWithPython(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatal(err)
-		}
-		if pooled && string(row[srcCol].ByteArray()) != fm.Profile {
-			continue
 		}
 		want[string(row[idCol].ByteArray())] = row[scoreCol].Double()
 	}

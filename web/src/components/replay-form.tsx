@@ -4,16 +4,13 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 const profiles = [
-  ["sparkov", "Sparkov card payments (1.85M events)"],
-  ["amlworld", "AMLworld bank transfers (5.08M events)"],
   ["tabformer", "TabFormer card payments (9.0M events)"],
-  ["paysim", "PaySim mobile money (6.36M events, load testing)"],
 ];
 
 /** Starts a replay Job: a dataset streamed into Kafka in Event Time order. */
 export function ReplayForm() {
   const router = useRouter();
-  const [profile, setProfile] = useState("sparkov");
+  const [profile, setProfile] = useState("tabformer");
   const [speed, setSpeed] = useState("0");
   const [limit, setLimit] = useState("0");
   const [msg, setMsg] = useState("");

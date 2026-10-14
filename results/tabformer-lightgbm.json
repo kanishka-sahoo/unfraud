@@ -11,9 +11,7 @@
       "best_iteration": 15,
       "alert_budget": 0.005,
       "threshold": 0.024279298332885675,
-      "label_delay": {
-        "tabformer": "720h0m0s"
-      },
+      "label_delay": "720h0m0s",
       "split": {
         "train": {
           "events": 5133655,
@@ -82,12 +80,8 @@
           "dollar_recall": 0.4741904139518738
         }
       },
-      "features_sha256": {
-        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
-      },
-      "featurize_revision": {
-        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
-      },
+      "features_sha256": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd",
+      "featurize_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
       "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
       "lightgbm_version": "4.7.0",
       "params": {
@@ -114,9 +108,7 @@
       "best_iteration": 1000,
       "alert_budget": 0.005,
       "threshold": 7.003954714729664e-05,
-      "label_delay": {
-        "tabformer": "720h0m0s"
-      },
+      "label_delay": "720h0m0s",
       "split": {
         "train": {
           "events": 5133655,
@@ -185,12 +177,8 @@
           "dollar_recall": 0.9693700671195984
         }
       },
-      "features_sha256": {
-        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
-      },
-      "featurize_revision": {
-        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
-      },
+      "features_sha256": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd",
+      "featurize_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
       "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
       "lightgbm_version": "4.7.0",
       "params": {
@@ -217,9 +205,7 @@
       "best_iteration": 999,
       "alert_budget": 0.005,
       "threshold": 6.315892251051586e-06,
-      "label_delay": {
-        "tabformer": "720h0m0s"
-      },
+      "label_delay": "720h0m0s",
       "split": {
         "train": {
           "events": 5133655,
@@ -288,115 +274,8 @@
           "dollar_recall": 0.8985291123390198
         }
       },
-      "features_sha256": {
-        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
-      },
-      "featurize_revision": {
-        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
-      },
-      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
-      "lightgbm_version": "4.7.0",
-      "params": {
-        "objective": "binary",
-        "learning_rate": 0.1,
-        "num_leaves": 127,
-        "max_depth": 10,
-        "min_data_in_leaf": 100,
-        "feature_fraction": 0.5,
-        "bagging_fraction": 0.8,
-        "bagging_freq": 1,
-        "lambda_l2": 1.0,
-        "max_bin": 255,
-        "metric": "average_precision",
-        "num_threads": 4,
-        "seed": 7,
-        "deterministic": true,
-        "force_row_wise": true,
-        "verbose": -1
-      }
-    },
-    "core": {
-      "feature_set": "core",
-      "best_iteration": 119,
-      "alert_budget": 0.005,
-      "threshold": 0.008961456717415033,
-      "label_delay": {
-        "tabformer": "720h0m0s"
-      },
-      "split": {
-        "train": {
-          "events": 5133655,
-          "fraud": 7115
-        },
-        "val": {
-          "events": 1721615,
-          "fraud": 2491
-        },
-        "test": {
-          "events": 1723938,
-          "fraud": 2087
-        }
-      },
-      "validation": {
-        "events": 1721615,
-        "fraud": 2491,
-        "pr_auc": 0.042709830495492006,
-        "roc_auc": 0.9248322676258957,
-        "alert_rate": 0.005000537286210913,
-        "recall": 0.15495784825371337,
-        "precision": 0.044836798699035896,
-        "dollar_recall": 0.17145340144634247
-      },
-      "test": {
-        "events": 1723938,
-        "fraud": 2087,
-        "pr_auc": 0.0171153680864282,
-        "roc_auc": 0.92244263156859,
-        "alert_rate": 0.0048528427356436254,
-        "recall": 0.11356013416387159,
-        "precision": 0.02832895051398518,
-        "dollar_recall": 0.14313353598117828
-      },
-      "test_budgets": {
-        "0.001": {
-          "threshold": 0.05868847865677282,
-          "alert_rate": 0.0009234670852432048,
-          "recall": 0.014853857211308098,
-          "precision": 0.019472361809045227,
-          "recall_ceiling": 0.7628174413033062,
-          "dollar_recall": 0.01455631572753191
-        },
-        "0.005": {
-          "threshold": 0.008961456717415033,
-          "alert_rate": 0.0048528427356436254,
-          "recall": 0.11356013416387159,
-          "precision": 0.02832895051398518,
-          "recall_ceiling": 1.0,
-          "dollar_recall": 0.14313353598117828
-        },
-        "0.01": {
-          "threshold": 0.0037474612691909804,
-          "alert_rate": 0.00968306284796785,
-          "recall": 0.20891231432678486,
-          "precision": 0.02611873240280357,
-          "recall_ceiling": 1.0,
-          "dollar_recall": 0.24849125742912292
-        },
-        "0.02": {
-          "threshold": 0.0015238329208170697,
-          "alert_rate": 0.0195940921309235,
-          "recall": 0.3598466698610446,
-          "precision": 0.022232748157139052,
-          "recall_ceiling": 1.0,
-          "dollar_recall": 0.4028702676296234
-        }
-      },
-      "features_sha256": {
-        "tabformer": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd"
-      },
-      "featurize_revision": {
-        "tabformer": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52"
-      },
+      "features_sha256": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd",
+      "featurize_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
       "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
       "lightgbm_version": "4.7.0",
       "params": {

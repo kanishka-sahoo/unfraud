@@ -4,10 +4,9 @@ Thresholds for each Alert Budget are set on the validation period and applied un
 
 | Configuration | PR-AUC | ROC-AUC | Recall @ 0.1% | Recall @ 0.5% | Recall @ 1.0% | Recall @ 2.0% | Test alert rate @ 0.5% | $-recall @ 0.5% | Precision @ 0.5% | Trees |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Model, raw features (core + dataset extras) | 0.4569 | 0.5209 | 43.2% | 51.5% | 51.5% | 51.5% | 0.46% | 47.4% | 13.7% | 15 |
+| Model, raw features | 0.4569 | 0.5209 | 43.2% | 51.5% | 51.5% | 51.5% | 0.46% | 47.4% | 13.7% | 15 |
 | + real-time features | 0.7625 | 0.9965 | 56.2% | 90.9% | 94.7% | 97.2% | 0.47% | 91.1% | 23.5% | 1000 |
 | + graph features | 0.3458 | 0.9821 | 38.4% | 70.1% | 80.0% | 88.2% | 1.00% | 73.3% | 8.5% | 999 |
-| Core features only (shared by every payment Profile) | 0.0171 | 0.9224 | 1.5% | 11.4% | 20.9% | 36.0% | 0.49% | 14.3% | 2.8% | 119 |
 
 Recall ceilings (fraud a perfect model could catch at each budget): 0.1% → 55%, 0.5% → 100%, 1.0% → 100%, 2.0% → 100%.
 
@@ -29,3 +28,11 @@ The scorer blocks above the 0.5%-budget threshold (7.004e-05) and sends to revie
 | Rule | Hits | Precision | Fraud caught |
 |---|---|---|---|
 | `FRAUD_PAYEE` | 5,242 | 15.2% | 795 |
+
+### System Run (in-cluster scorer, lite profile, 4-core / 8 GB machine)
+
+One scorer pod scoring the whole input topic from a backlog, with features in Valkey, compared Event by Event with the Accuracy Run (`scripts/system-run.sh`, `cmd/drift`). End-to-end latency is not reported here: a backlog measures queueing, not scoring; it needs a live-paced replay.
+
+| Scorer | Events/s | Probabilities differing | Mean abs diff | p99 abs diff | Max abs diff | Model decisions differing |
+|---|---|---|---|---|---|---|
+| Aligned (ADR-0016) | 500 | 6.14% | 2.61e-07 | 1.43e-09 | 0.133 | 147 of 1,500,000 |

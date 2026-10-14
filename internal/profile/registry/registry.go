@@ -6,15 +6,11 @@ import (
 	"slices"
 
 	"github.com/kanishka-sahoo/unfraud/internal/profile"
-	"github.com/kanishka-sahoo/unfraud/internal/profile/payments"
-	"github.com/kanishka-sahoo/unfraud/internal/profile/paysim"
+	"github.com/kanishka-sahoo/unfraud/internal/profile/tabformer"
 )
 
 var profiles = map[string]profile.Profile{
-	payments.TabFormer.Name: payments.TabFormer,
-	payments.Sparkov.Name:   payments.Sparkov,
-	payments.AMLWorld.Name:  payments.AMLWorld,
-	paysim.Profile.Name:     paysim.Profile,
+	tabformer.Profile.Name: tabformer.Profile,
 }
 
 // Get returns the named Profile.

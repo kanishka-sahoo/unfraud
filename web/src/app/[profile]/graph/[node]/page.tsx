@@ -6,11 +6,10 @@ import { api, type Subgraph } from "@/lib/api";
 export const metadata = { title: "Graph" };
 
 /** What a Node (payer) and a Link attribute (payee) are in each graph. */
-const nouns: Record<string, [string, string]> = { tabformer: ["Card", "Merchant"], amlworld: ["Account", "Receiving account"] };
+const nouns: Record<string, [string, string]> = { tabformer: ["Card", "Merchant"] };
 
 const explain: Record<string, string> = {
   tabformer: "Cards linked through merchants they both paid in the last 30 days. Merchants paid by more than 100 cards are too common to link.",
-  amlworld: "Accounts linked through accounts they both paid in the last 7 days. Accounts paid by more than 20 others are too common to link.",
 };
 
 export default function GraphPage({ params, searchParams }: PageProps<"/[profile]/graph/[node]">) {

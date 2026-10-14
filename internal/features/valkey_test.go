@@ -11,7 +11,7 @@ import (
 	"github.com/valkey-io/valkey-go"
 
 	"github.com/kanishka-sahoo/unfraud/internal/features"
-	"github.com/kanishka-sahoo/unfraud/internal/profile/payments"
+	"github.com/kanishka-sahoo/unfraud/internal/profile/tabformer"
 	"github.com/kanishka-sahoo/unfraud/internal/replay"
 )
 
@@ -34,7 +34,7 @@ func TestValkeyMatchesMemory(t *testing.T) {
 	defer c.Close()
 	prefix := fmt.Sprintf("test-%d:", time.Now().UnixNano())
 
-	p := payments.TabFormer
+	p := tabformer.Profile
 	mem, err := features.New(p, features.NewMemory())
 	if err != nil {
 		t.Fatal(err)

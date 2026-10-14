@@ -8,12 +8,12 @@ VALUES    ?= $(CHART)/values.yaml
 TAG       ?= dev
 CMDS      := $(notdir $(wildcard cmd/*))
 
-.PHONY: help data gen lint test test-integration reset-topic featurize train pooled parity report accuracy system-run check-cases fixtures build images deploy-model secrets console tailscale grafana cluster-up cluster-down deploy replay kafka-wait
+.PHONY: help data gen lint test test-integration reset-topic featurize train parity report accuracy system-run check-cases fixtures build images deploy-model secrets console tailscale grafana cluster-up cluster-down deploy replay kafka-wait
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
-data: ## Download and normalize the datasets with your Kaggle credentials, then verify checksums
+data: ## Download TabFormer with your Kaggle credentials, prepare it, verify checksums
 	./scripts/fetch-data.sh
 
 gen: ## Regenerate Protobuf code
@@ -31,7 +31,7 @@ test: ## Run unit tests
 test-integration: ## Run tests against the cluster's Kafka (needs make cluster-up deploy)
 	UNFRAUD_KAFKA_BROKERS=localhost:30092 go test -count=1 ./...
 
-reset-topic: ## Delete and recreate a Profile's input topic: make reset-topic PROFILE=amlworld
+reset-topic: ## Delete and recreate a Profile's input topic: make reset-topic PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	kubectl -n $(NAMESPACE) delete kafkatopic input.$(PROFILE) --wait
 	helm upgrade unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) --reset-then-reuse-values
@@ -44,24 +44,10 @@ featurize: ## Accuracy Run to training tables: make featurize PROFILE=tabformer
 
 train: ## Train every feature set of a Profile: make train PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
-	@for fs in core static realtime $(if $(filter sparkov,$(PROFILE)),,graph); do \
+	@for fs in static realtime graph; do \
 	  uv run --project train unfraud-train train --features data/features/$(PROFILE) \
 	    --out models/$(PROFILE)/lgbm-$$fs --feature-set $$fs || exit 1; \
 	done
-
-pooled: ## Train pooled core models, score each Profile with models that never saw it, and report
-	uv run --project train unfraud-train train --features data/features/tabformer data/features/sparkov \
-	  --out models/pooled/cards --feature-set core
-	uv run --project train unfraud-train train --features data/features/tabformer data/features/sparkov \
-	  data/features/amlworld --out models/pooled/all --feature-set core
-	@for m in tabformer/lgbm-core sparkov/lgbm-core amlworld/lgbm-core pooled/cards; do \
-	  for p in tabformer sparkov amlworld; do \
-	    jq -e --arg p $$p '.sources | index($$p)' models/$$m/manifest.json >/dev/null && continue; \
-	    uv run --project train unfraud-train transfer --model models/$$m --features data/features/$$p \
-	      --out models/pooled/transfer/$$(echo $$m | tr / _)__$$p.json || exit 1; \
-	  done; \
-	done
-	uv run --project train unfraud-train report-pooled --out results/pooled-core
 
 parity: ## Check Go scores match Python on the test month: make parity PROFILE=tabformer [SET=realtime]
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
@@ -72,13 +58,16 @@ report: ## Regenerate a Profile's results tables: make report PROFILE=tabformer
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	uv run --project train unfraud-train report --models models/$(PROFILE) --out results/$(PROFILE)-lightgbm --features data/features/$(PROFILE)
 
-accuracy: ## Accuracy Run through the scorer: make accuracy PROFILE=tabformer MODEL=lgbm-realtime
+accuracy: ## Scorer Decisions offline: make accuracy PROFILE=tabformer MODEL=lgbm-realtime [LIMIT=1500000]
 	@test -n "$(PROFILE)" -a -n "$(MODEL)" || { echo "PROFILE and MODEL are required"; exit 1; }
-	go run ./cmd/accuracy -profile $(PROFILE) -model models/$(PROFILE)/$(MODEL)
+	@# Without LIMIT: the validation and test periods, for results. With it: the
+	@# first LIMIT Events, as replayed live, for system-run to compare against.
+	go run ./cmd/accuracy -profile $(PROFILE) -model models/$(PROFILE)/$(MODEL) \
+	  $(if $(LIMIT),-limit $(LIMIT) -out models/$(PROFILE)/$(MODEL)/slice,-evaluated-only)
 
-system-run: ## Score the whole input topic in the cluster from clean state and compare: make system-run PROFILE=tabformer
+system-run: ## Rescore the input topic in the cluster from clean state and compare (after make accuracy LIMIT=...)
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
-	./scripts/system-run.sh $(PROFILE) models/$(PROFILE)/lgbm-realtime/decisions.parquet results/$(PROFILE)-system-run-aligned.json
+	./scripts/system-run.sh $(PROFILE) models/$(PROFILE)/lgbm-realtime/slice/decisions.parquet results/$(PROFILE)-system-run-aligned.json
 
 check-cases: ## Check Case invariants against stored Decisions
 	./scripts/check-cases.sh
@@ -133,7 +122,7 @@ deploy: ## Install or upgrade the chart (VALUES=$(CHART)/values-full.yaml for fu
 kafka-wait:
 	kubectl -n $(NAMESPACE) wait kafka/unfraud --for=condition=Ready --timeout=600s
 
-replay: ## Replay a dataset into Kafka in the cluster: make replay PROFILE=amlworld [SPEED=0] [LIMIT=0]
+replay: ## Replay a dataset into Kafka in the cluster: make replay PROFILE=tabformer [SPEED=0] [LIMIT=0]
 	@test -n "$(PROFILE)" || { echo "PROFILE is required"; exit 1; }
 	$(eval RUN := $(shell date +%Y%m%d%H%M%S))
 	helm template unfraud $(CHART) -n $(NAMESPACE) -f $(VALUES) --set image.tag=$(TAG) \

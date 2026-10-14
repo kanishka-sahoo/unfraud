@@ -6,57 +6,38 @@ Status: draft, 2026-10-12. Terms in **bold** are defined in [`CONTEXT.md`](../CO
 
 - Score each **Event** within tens of milliseconds, using fast rules plus a gradient-boosted model over features that update in real time.
 - Catch coordinated fraud that looks normal one Event at a time by linking **Entities** into a graph and raising **Ring Alerts**.
-- Read every dataset into one **Payment Schema**, so features mean the same everywhere and a model trained on one dataset can score another.
 - Give an analyst a **Case** for every flag, including a grounded LLM **Summary**, in a multi-page web app.
 - Run like a production system (horizontal scaling, observability, defined degraded modes), deployed to local Kubernetes.
 - Publish every metric with a single command that anyone can rerun from public data.
 
 **Non-goals:** a cloud deployment; training on analyst **Dispositions**; claiming accuracy on data we can't evaluate honestly (see §2).
 
-## 2. Datasets ([ADR-0018](./adr/0018-named-payment-datasets.md))
+## 2. Dataset ([ADR-0018](./adr/0018-named-payment-datasets.md), [ADR-0019](./adr/0019-tabformer-only.md))
 
-| Profile | Dataset | Role |
-|---|---|---|
-| `tabformer` | IBM TabFormer: 2,000 cardholders with several cards each, October 2014 to December 2019 (9.0M Events, 0.13% fraud) | Card fraud; attribute graph |
-| `sparkov` | Sparkov (Kaggle): 1,000 cardholders, 693 merchants, 2019–2020 (1.85M Events, 0.52% fraud) | Card fraud |
-| `amlworld` | IBM AMLworld HI-Small: 500,000 bank accounts over ten days (5.08M Events, 0.09% laundering) | Laundering as fraud; attribute graph |
-| `paysim` | PaySim | **Load testing only**: balance columns give away the label; origin accounts almost never repeat |
+One dataset, IBM TabFormer: 2,000 synthetic US cardholders with several cards each, October 2014 to December 2019 (9.0M Events, 0.13% fraud). Every column has a published meaning, which is why it replaced IEEE-CIS and Elliptic, whose features were mostly masked; it exercises every part of the pipeline, which is why it is the only one (ADR-0019). It is a simulation, so we claim "reproducible from public, synthetic data": metrics say how well the engine finds the simulator's fraud, not how it would do on a real bank's.
 
-Every column in these datasets has a published meaning. That is why they replaced IEEE-CIS and Elliptic, whose features were mostly masked. They are all simulations, so we claim "reproducible from public, synthetic data": metrics say how well the engine finds each simulator's fraud, not how it would do on a real bank's.
+`unfraud-train prepare` (`train/src/unfraud_train/prepare.py`) joins the transactions with the card and cardholder files and writes `data/raw/tabformer/events.csv`, sorted by Event Time (the raw file is sorted by card):
 
-**The Payment Schema.** `unfraud-train prepare` (`train/src/unfraud_train/prepare.py`) turns each raw dataset into `data/raw/<profile>/events.csv`, sorted by Event Time:
+| Column | From |
+|---|---|
+| `payer` (**Payer**) | user + card index |
+| `payee` (**Payee**) | merchant |
+| `customer` (**Customer**) | user |
+| `amount_usd`, `channel` | amount; `online` or `in_person` |
+| `category` | MCC grouped into 11 categories |
+| extras | entry mode (chip, swipe, online), MCC, authorization errors, merchant state, abroad, out of home state, card brand, type, chip and credit limit, cardholder age, income and FICO score |
 
-| Column | TabFormer | Sparkov | AMLworld |
-|---|---|---|---|
-| `payer` (**Payer**) | user + card index | card number | bank + account paying |
-| `payee` (**Payee**) | merchant | merchant | bank + account paid |
-| `customer` (**Customer**) | user | card number (one card each) | the paying account's legal entity |
-| `amount_usd` | amount | amount | amount paid ÷ the simulator's fixed exchange rate |
-| `channel` | `in_person` or `online` | `in_person`/`online` from the `_pos`/`_net` category suffix, else missing | payment format (ACH, wire, cheque, cash, credit card, Bitcoin, reinvestment) |
-| `category` | MCC mapped onto Sparkov's 11 categories | category without its suffix | missing |
-| extras | entry mode, MCC, authorization errors, merchant state, abroad, out of home state, card brand/type/chip/limit, age, income, FICO | gender, home state, city population, job, age, distance to merchant | currencies, cross-currency, self-transfer, same bank, same owner |
+`make data` downloads with the user's own Kaggle credentials, prepares, and checks SHA-256 hashes of both the raw and the prepared files against `data/checksums.sha256`. TabFormer is released by IBM under Apache-2.0 (the Kaggle mirror says "other"). The data is never committed.
 
-`make data` downloads with the user's own Kaggle credentials, prepares, and checks SHA-256 hashes of both raw and prepared files against `data/checksums.sha256`. Licences: Sparkov CC0; AMLworld CDLA-Sharing-1.0; TabFormer as released by IBM (Apache-2.0 on GitHub; the Kaggle mirror says "other"); PaySim CC BY-SA 4.0. The data is never committed.
+**Event Time** is the transaction's date and minute, read as UTC. Only October 2014 to December 2019 is kept: earlier years have few cardholders, and 2020 has no fraud labels yet.
 
-**Event Time.** The datasets carry calendar dates, read as UTC. Two are adjusted:
-
-- Sparkov's date strings repeat 2019-02-28 for the simulator's 2012 leap day, so they are out of order. Event Time is `unix_time` shifted to match the strings from March 2019 on, which places January and February 2019 one day early.
-- AMLworld is not sorted, and after ten days of normal traffic the simulator only finishes laundering attempts (1,108 transfers, 59% laundering). Those are dropped.
-
-**Splits** are by Event Time and declared on each Profile (`profile.Split`):
-
-| Profile | Warm-up | Train | Validation | Test |
-|---|---|---|---|---|
-| tabformer | Oct–Dec 2014 | 2015–2017 | 2018 | 2019 |
-| sparkov | | Jan 2019 – Mar 2020 | Apr–Jun 2020 | Jul–Dec 2020 |
-| amlworld | | 1–6 Sep 2022 | 7–8 Sep | 9–10 Sep |
+**Split** by Event Time (`profile.Split`): October–December 2014 only warms up the real-time features; 2015–2017 trains, 2018 validates, 2019 tests.
 
 Limitations we state openly:
 
-- No Entity appears in more than one dataset, so nothing links across datasets. "Across datasets" means shared features and models that transfer.
-- Sparkov's merchant coordinates are drawn near the cardholder at random, so `merchant_km` says little. Every Sparkov merchant is used by hundreds of cards, so it has no graph.
-- AMLworld covers ten days, so its Label delay is 3 days, not the months real laundering investigations take.
 - TabFormer fraud comes in bursts: 2017 has 255 fraud Events, 2016 has 3,579.
+- The simulator makes some fraud easy: 73% of transactions in Italy are fraud, and the MCC alone carries most of a raw-feature model's signal.
+- Online transactions have no merchant location.
 
 ## 3. One pipeline, many Profiles ([ADR-0002](./adr/0002-dataset-profiles.md))
 
@@ -75,9 +56,9 @@ profiles/<name>/
 
 Every Profile has one ordered input topic, `input.<profile>`, carrying a Protobuf `Envelope` (`proto/unfraud/v1/input.proto`) whose payload is an `Event`, `Link`, `Watermark` or `LabelRelease` ([ADR-0013](./adr/0013-ordered-input-topic-and-feature-schema.md)):
 
-- Events and Label Releases are keyed by the primary Entity (the Payer; PaySim's origin). Each Watermark is copied to every partition.
+- Events and Label Releases are keyed by the primary Entity (the Payer). Each Watermark is copied to every partition.
 - Event features are positional: `repeated double num` (NaN = missing) and `repeated string cat` ("" = missing), in the order given by the Profile's **Feature Schema**. A `schema_id` hash lets consumers reject Events built against a different schema.
-- Label Releases come from a second cursor over the dataset that trails the first by the label delay, so the replayer's memory stays constant (PaySim peaks at 2.9M pending Labels).
+- Label Releases come from a second cursor over the dataset that trails the first by the label delay, so the replayer's memory stays constant.
 
 Services contain no dataset-specific logic.
 
@@ -131,16 +112,14 @@ All windows are in **Event Time**. Each feature is declared on its Profile as a 
 
 Windowed counts and sums are bucketed: a window of length W is read as the 24 buckets of W/24 ending with the current one, so it reaches back between 23/24·W and W. Distinct counts are exact sliding windows (last-seen time per member). Engine state goes through a batched `Get`/`Apply` interface, so the Valkey implementation needs one read and one write round trip per Event.
 
-Every payment Profile computes the same real-time features (`payments.CoreFeatures`), under the same names:
+TabFormer's real-time features (`internal/profile/tabformer/features.go`):
 
 - **Velocity:** count and amount per Payer over 1h/24h/7d; distinct Payees per Payer (24h/7d); count per Payee (1h/24h); distinct Payers per Payee (24h/7d); distinct Payers per Customer (7d).
 - **Unusual behaviour:** amount ÷ the Payer's 30-day mean and ÷ the Payee's 7-day mean; seconds since the Payer's and the Payee's previous Event; first payment from this Payer to this Payee; channel or category different from the Payer's previous Event.
 - **Released Labels:** fraud Labels on the Payer (30d/90d), the Payee (30d) and the Customer (90d).
-- **Graph** (TabFormer, AMLworld; §7): the Component and Community the Payer joins, and released fraud in them.
+- **Graph** (§7): the Component and Community the Payer joins, and released fraud in them.
 
-With the core raw features (amount in USD, channel, category, hour, weekday) these are the **Core Features**. A model that uses only them gets schema ID 0 and binds to any payment Profile by name.
-
-**Label Release** rule: nothing may read a Label before `event_time + delay`. The delay is 30 days for TabFormer and Sparkov and 3 days for AMLworld, configurable, and recorded in the results.
+**Label Release** rule: nothing may read a Label before `event_time + delay`. The delay is 30 days, configurable, and recorded in the results.
 
 State lives in Valkey as time-bucketed counters, with Lua scripts that update and read atomically, pipelined per Event. If Valkey is unavailable, the scorer falls back to static features and marks the Decision degraded.
 
@@ -156,10 +135,8 @@ Latency budget (targets, to be measured): consume → Decision under 10 ms p99 i
 
 ## 7. Graph (rings)
 
-- **Attribute graph** (`internal/graph`): Payers link through Payees they both paid. A Payee paid by more than the Profile's cap within the window is a **Super-node** and never links. Caps were chosen on training data only, from the fraud rate by Payee degree:
-  - TabFormer: merchants used by 21–100 cards in 30 days carry 3.2× the base fraud rate; more popular ones 0.8×. Cap 100, window 30 days.
-  - AMLworld: accounts paid by 6–20 others in a week carry 7.2× the base laundering rate (fan-in); those paid by more than 100 carry none. Cap 20, window 7 days.
-  - Sparkov: no graph; every merchant is paid by hundreds of cards.
+- **Attribute graph** (`internal/graph`): cards link through merchants they both paid. A merchant used by more than 100 cards within the 30-day window is a **Super-node** and never links. The cap was chosen on the training years only: merchants used by 21–100 cards carry 3.2× the base fraud rate, more popular ones 0.8×.
+- **Graph features did not hold up.** They lowered PR-AUC on validation (0.834 → 0.655) and on test (0.763 → 0.346): Component and Community sizes grow with the simulated population, and the model learns thresholds that stop holding. The scorer serves the model without them; graph-svc still revises with them, so the explorer and Revisions run, and the Case keeps the stricter Decision.
 - The graph is rebuilt daily in Event Time (union-find cannot delete edges) and only grows in between. Each rebuild runs a deterministic Louvain; features describe both the Component and the Community the Event joins, including other Payers' released fraud Labels.
 - **Rings and Ring Alerts**: a Community with at least 3 Payers, 2 of them with released fraud, flags its Payers' later Events and revises their Events approved in the previous 7 days. Off unless a Profile enables it after beating the model at equal alert volume on validation.
 - **No GNN in serving** ([ADR-0012](./adr/0012-no-gnn-in-serving.md)).
@@ -198,11 +175,7 @@ Visual direction: intaglio-ink navy with paper-coloured text; decisions are alwa
 - **Accuracy Run**: deterministic Replay that pauses at each Watermark until graph-svc catches up, so features are exact as of Event Time. All fraud metrics come from this mode, and so does the training Parquet.
 - **System Run**: production topology, N scorers, full speed. Reports throughput, p50/p99 latency, consumer lag, and score drift compared with the Accuracy Run (`cmd/drift`: the measured cost of concurrency). Scorer partitions are aligned in Event Time ([ADR-0016](./adr/0016-event-time-alignment-across-partitions.md)); without that, a backlog let partitions drift apart and 96% of scores differed.
 
-Per Profile (`make train report`): PR-AUC and recall at Alert Budgets of 0.1%, 0.5%, 1% and 2% of Events, with dollar-weighted recall and precision at 0.5%, for the raw features, + real-time, + graph, and Core Features only. Each budget's threshold is set on the validation period and applied unchanged to the test period, and each table prints the recall a perfect model could reach at each budget.
-
-Across Profiles (`make pooled`): Core Models trained on each dataset alone, on both card datasets pooled, and on all three, each scored on every dataset's test period. Datasets a model never saw are scored unchanged, with thresholds from that dataset's validation period. Pooled models are always reported per dataset, never as one pooled number (ADR-0018).
-
-PaySim: System Runs only.
+`make train report`: PR-AUC and recall at Alert Budgets of 0.1%, 0.5%, 1% and 2% of Events, with dollar-weighted recall and precision at 0.5%, for the raw features, + real-time, and + graph. Each budget's threshold is set on the validation period and applied unchanged to the test period, and each table prints the recall a perfect model could reach at each budget.
 
 `make bench` runs everything and writes `results/<run-id>.json`, including dataset hashes, git SHA, hardware, Label Release delays and LLM provider pins.
 
@@ -216,7 +189,7 @@ What is built and runs on the 4-core, 8 GB reference machine (`lite`, the defaul
 - **Failure handling:** idempotent producers, at-least-once consumers with idempotency Guards on feature state; records that cannot be processed go to `dlq.<profile>` with the error and origin in headers; when Valkey is unreachable the scorer keeps deciding with real-time features missing and marks Decisions `degraded`; graph-svc recovers by re-reading its input. An optional **Shadow Model** scores every Event beside the active one (recorded, never acted on).
 - **Observability:** Prometheus (pods opt in with `prometheus.io/scrape`, 12-hour retention) and Grafana with a provisioned dashboard (`make grafana`): throughput and latency per Stage, degraded and dead-lettered records, Shadow agreement, graph-svc progress, case-svc and summarizer. Kafka and Valkey internals are not scraped.
 - Every pod has a memory limit. With a full pipeline running, the cluster uses about 3.7 GB.
-- What fits in `lite`: Sparkov end to end, and TabFormer's scorer and graph-svc. AMLworld does not: its feature state for 500,000 accounts took 5 GB in the Accuracy Run, against Valkey's 384 MB and graph-svc's 768 MiB here, so its numbers are offline only.
+- A full live replay of TabFormer (9M Events) would take most of a day here, mostly case-svc storing 18M Decisions in Postgres, so the System Run covers the first 1.5M Events (ADR-0019).
 - Secrets (the OpenRouter key) are Kubernetes Secrets created by `make secrets`. Nothing leaves the machine except calls to OpenRouter.
 - Model training runs outside the cluster.
 
@@ -226,12 +199,12 @@ Not built, because none of it could be validated on the reference machine: KEDA 
 
 ```
 cmd/            replayer, featurize, accuracy, scorer, graphsvc, casesvc, summarizer, casesapi, drift
-internal/       profile/ (+ payments, paysim, registry), features/, graph/, rules/, scoring/,
+internal/       profile/ (+ tabformer, registry), features/, graph/, rules/, scoring/,
                 model/ (lgbm evaluator + TreeSHAP), align/, replay/, store/, cases/, llm/, api/, dlq/, table/, csvx/
 proto/          buf module (input and scored schemas); gen/ holds the generated Go
 api/            cases-api OpenAPI spec
 web/            Next.js console and Playwright tests
-train/          Python CLI (uv): prepare, train, transfer, report, fixture
+train/          Python CLI (uv): prepare, train, report, fixture
 deploy/         docker/, helm/unfraud (chart, values, Grafana dashboard), kind/
 scripts/        fetch-data, system-run, summary-report, console-local
 results/        published results (embedded in cases-api)
@@ -249,9 +222,9 @@ All eight are done; see `git log` for what each delivered.
 5. **Cases:** case-svc, Postgres, summarizer with OpenRouter and the stub driver, Grounding metrics.
 6. **Web app:** cases-api plus the Next.js app (cases and rings first, then overview, models, benchmarks, replay).
 7. **Hardening:** dead-letter topics, degraded mode, Shadow Models, Prometheus and Grafana, System Runs and paced latency, Playwright end-to-end tests. (KEDA and a standby graph-svc were not built; see §11.)
-8. **Named datasets:** IEEE-CIS and Elliptic replaced by TabFormer, Sparkov and AMLworld in one Payment Schema; Core Models trained per dataset, pooled, and scored across datasets (ADR-0018).
+8. **Named data:** IEEE-CIS and Elliptic replaced by fully named datasets (ADR-0018), then narrowed to TabFormer alone (ADR-0019).
 
 ## 14. Open questions
 
-- Whether a Ring policy beats the model at equal volume on AMLworld, where laundering is built from fan-in, fan-out and cycle patterns.
-- AMLworld's larger releases (HI-Medium, 30M transfers) would give a longer test period, but do not fit the reference machine's memory with today's in-memory feature state.
+- Graph features that stay stable as the population grows (shares and rates rather than sizes) might hold up where these did not.
+- A full live replay needs case-svc to store Decisions faster (batched `COPY`, or storing only flagged Events' Decisions).
