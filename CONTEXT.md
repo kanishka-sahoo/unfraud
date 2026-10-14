@@ -64,8 +64,12 @@ _Avoid_: Threshold (that is how the budget is enforced, not the budget itself)
 A stable identifier for why a rule fired.
 _Avoid_: Rule name, explanation
 
+**Fraud Probability**:
+The model's calibrated score: of Events given 20%, about one in five should turn out to be fraud. Calibration is fitted on the validation period.
+_Avoid_: Score (the raw model output before calibration), confidence
+
 **Contribution**:
-The per-feature SHAP value explaining a model score.
+The per-feature SHAP value explaining a model score, in calibrated log-odds.
 _Avoid_: Feature importance (that is global, not per Event)
 
 **Shadow Model**:

@@ -20,7 +20,7 @@ export function RiskLedger({ c, named }: { c: Contributions; named: Map<string, 
   return (
     <table className="ledger">
       <caption className="muted" style={{ textAlign: "left", captionSide: "bottom", paddingTop: 8, fontSize: "var(--t-xs)" }}>
-        Effects are SHAP values in log-odds from model {c.model_version}. Red raises risk, blue lowers it; the running column shows the fraud probability after each line.
+        Effects are SHAP values in calibrated log-odds from model {c.model_version}. Red raises risk, blue lowers it; the running column shows the fraud probability after each line.
       </caption>
       <thead>
         <tr><th>Factor</th><th className="num">Value</th><th className="bar-cell">Effect on risk</th><th className="num">Effect</th><th className="num">Running</th></tr>

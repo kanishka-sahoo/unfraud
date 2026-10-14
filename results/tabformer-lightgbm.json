@@ -8,18 +8,18 @@
   "runs": {
     "static": {
       "feature_set": "static",
-      "best_iteration": 15,
+      "best_iteration": 1000,
       "alert_budget": 0.005,
-      "threshold": 0.024279298332885675,
+      "threshold": 0.010493516874097795,
       "label_delay": "720h0m0s",
       "split": {
         "train": {
-          "events": 5133655,
-          "fraud": 7115
+          "events": 6421691,
+          "fraud": 8896
         },
         "val": {
-          "events": 1721615,
-          "fraud": 2491
+          "events": 433579,
+          "fraud": 710
         },
         "test": {
           "events": 1723938,
@@ -27,62 +27,62 @@
         }
       },
       "validation": {
-        "events": 1721615,
-        "fraud": 2491,
-        "pr_auc": 0.7117139150516818,
-        "roc_auc": 0.7810767855327878,
-        "alert_rate": 0.005000537286210913,
-        "recall": 0.7555198715375351,
-        "precision": 0.21860843303519573,
-        "dollar_recall": 0.7849924564361572
+        "events": 433579,
+        "fraud": 710,
+        "pr_auc": 0.9013224261595304,
+        "roc_auc": 0.9911939919760391,
+        "alert_rate": 0.005000242170400319,
+        "recall": 0.9225352112676056,
+        "precision": 0.30212177121771217,
+        "dollar_recall": 0.9370178580284119
       },
       "test": {
         "events": 1723938,
         "fraud": 2087,
-        "pr_auc": 0.4569423788819753,
-        "roc_auc": 0.520945156362755,
-        "alert_rate": 0.004554108094374624,
-        "recall": 0.5146142788691902,
-        "precision": 0.13679786014520443,
-        "dollar_recall": 0.4741904139518738
+        "pr_auc": 0.7032203669519775,
+        "roc_auc": 0.7811430707300665,
+        "alert_rate": 0.004819778901561425,
+        "recall": 0.757546717776713,
+        "precision": 0.19027560476591648,
+        "dollar_recall": 0.7361063957214355
       },
       "test_budgets": {
         "0.001": {
-          "threshold": 0.5093229596859695,
-          "alert_rate": 0.0006624368161732034,
-          "recall": 0.4317201724964063,
-          "precision": 0.7889667250437828,
-          "recall_ceiling": 0.5471969333972209,
-          "dollar_recall": 0.46063026785850525
+          "threshold": 0.9581692846148303,
+          "alert_rate": 0.0006015297533902031,
+          "recall": 0.4724484906564447,
+          "precision": 0.9508196721311475,
+          "recall_ceiling": 0.49688548155246764,
+          "dollar_recall": 0.5265020728111267
         },
         "0.005": {
-          "threshold": 0.024279298332885675,
-          "alert_rate": 0.004554108094374624,
-          "recall": 0.5146142788691902,
-          "precision": 0.13679786014520443,
+          "threshold": 0.010493516874097795,
+          "alert_rate": 0.004819778901561425,
+          "recall": 0.757546717776713,
+          "precision": 0.19027560476591648,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.4741904139518738
+          "dollar_recall": 0.7361063957214355
         },
         "0.01": {
-          "threshold": 0.007849425540826684,
-          "alert_rate": 0.00964361827397505,
-          "recall": 0.5146142788691902,
-          "precision": 0.0646015037593985,
+          "threshold": 0.0042491046345991025,
+          "alert_rate": 0.009934812040804252,
+          "recall": 0.7589841878294202,
+          "precision": 0.09248554913294797,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.4741904139518738
+          "dollar_recall": 0.7327260375022888
         },
         "0.02": {
-          "threshold": 0.002990693581853449,
-          "alert_rate": 0.019920089933628704,
-          "recall": 0.5146142788691902,
-          "precision": 0.031274569756268016,
+          "threshold": 0.0017290365627221987,
+          "alert_rate": 0.020463612960558906,
+          "recall": 0.7594633445136559,
+          "precision": 0.04492885084188446,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.4741904139518738
+          "dollar_recall": 0.7402336001396179
         }
       },
-      "features_sha256": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd",
-      "featurize_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
-      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "features_sha256": "62a42eaf804e8a08f79784bdc6f9c1f4118738d183392d339dd47fe0f90d167d",
+      "featurize_revision": "7fafbc1f629da6b4dfeafa2d9aff696990663bf2",
+      "train_revision": "7fafbc1f629da6b4dfeafa2d9aff696990663bf2",
       "lightgbm_version": "4.7.0",
       "params": {
         "objective": "binary",
@@ -101,22 +101,176 @@
         "deterministic": true,
         "force_row_wise": true,
         "verbose": -1
+      },
+      "calibration": {
+        "method": "platt",
+        "fit_on": "validation",
+        "slope": 0.6767503195659557,
+        "intercept": -0.09075763308768409
+      },
+      "test_calibration": {
+        "uncalibrated": {
+          "brier": 0.00045856890385747527,
+          "log_loss": 0.008544947378418405,
+          "expected_fraud": 1771.0035385825872,
+          "fraud": 2087,
+          "ece": 0.0004002907528944029,
+          "bins": [
+            {
+              "from": 0.0,
+              "to": 0.0001,
+              "events": 1689638,
+              "mean_probability": 2.070958753048275e-06,
+              "fraud_rate": 0.0002971050603738789,
+              "fraud": 502
+            },
+            {
+              "from": 0.0001,
+              "to": 0.001,
+              "events": 24457,
+              "mean_probability": 0.0003104905500564576,
+              "fraud_rate": 0.0001226642678987611,
+              "fraud": 3
+            },
+            {
+              "from": 0.001,
+              "to": 0.01,
+              "events": 6506,
+              "mean_probability": 0.00297737242595238,
+              "fraud_rate": 0.000768521364893944,
+              "fraud": 5
+            },
+            {
+              "from": 0.01,
+              "to": 0.05,
+              "events": 1143,
+              "mean_probability": 0.021590309005344,
+              "fraud_rate": 0.012248468941382326,
+              "fraud": 14
+            },
+            {
+              "from": 0.05,
+              "to": 0.1,
+              "events": 201,
+              "mean_probability": 0.07123859302606513,
+              "fraud_rate": 0.07462686567164178,
+              "fraud": 15
+            },
+            {
+              "from": 0.1,
+              "to": 0.2,
+              "events": 123,
+              "mean_probability": 0.13939367077915377,
+              "fraud_rate": 0.17073170731707318,
+              "fraud": 21
+            },
+            {
+              "from": 0.2,
+              "to": 0.5,
+              "events": 154,
+              "mean_probability": 0.33302243373840057,
+              "fraud_rate": 0.2987012987012987,
+              "fraud": 46
+            },
+            {
+              "from": 0.5,
+              "to": 1.0,
+              "events": 1716,
+              "mean_probability": 0.9516971788450643,
+              "fraud_rate": 0.8630536130536131,
+              "fraud": 1481
+            }
+          ]
+        },
+        "calibrated": {
+          "brier": 0.0004557122583913905,
+          "log_loss": 0.006106379177867581,
+          "expected_fraud": 2077.9011384871965,
+          "fraud": 2087,
+          "ece": 0.0005289536455064561,
+          "bins": [
+            {
+              "from": 0.0,
+              "to": 0.0001,
+              "events": 1433686,
+              "mean_probability": 1.5700037790732334e-05,
+              "fraud_rate": 0.0003368938526288183,
+              "fraud": 483
+            },
+            {
+              "from": 0.0001,
+              "to": 0.001,
+              "events": 235469,
+              "mean_probability": 0.0003031716495443681,
+              "fraud_rate": 7.644318360378648e-05,
+              "fraud": 18
+            },
+            {
+              "from": 0.001,
+              "to": 0.01,
+              "events": 46163,
+              "mean_probability": 0.0027731961041985486,
+              "fraud_rate": 0.00010831185148278925,
+              "fraud": 5
+            },
+            {
+              "from": 0.01,
+              "to": 0.05,
+              "events": 5667,
+              "mean_probability": 0.02019324077855501,
+              "fraud_rate": 0.0007058408328921829,
+              "fraud": 4
+            },
+            {
+              "from": 0.05,
+              "to": 0.1,
+              "events": 677,
+              "mean_probability": 0.06843744918828783,
+              "fraud_rate": 0.014771048744460856,
+              "fraud": 10
+            },
+            {
+              "from": 0.1,
+              "to": 0.2,
+              "events": 337,
+              "mean_probability": 0.13718138620611517,
+              "fraud_rate": 0.06528189910979229,
+              "fraud": 22
+            },
+            {
+              "from": 0.2,
+              "to": 0.5,
+              "events": 236,
+              "mean_probability": 0.3299440589328755,
+              "fraud_rate": 0.3050847457627119,
+              "fraud": 72
+            },
+            {
+              "from": 0.5,
+              "to": 1.0,
+              "events": 1703,
+              "mean_probability": 0.9225610472990668,
+              "fraud_rate": 0.8649442160892542,
+              "fraud": 1473
+            }
+          ]
+        }
       }
     },
     "realtime": {
       "feature_set": "realtime",
-      "best_iteration": 1000,
+      "best_iteration": 966,
       "alert_budget": 0.005,
-      "threshold": 7.003954714729664e-05,
+      "threshold": 0.004185431777487253,
       "label_delay": "720h0m0s",
       "split": {
         "train": {
-          "events": 5133655,
-          "fraud": 7115
+          "events": 6421691,
+          "fraud": 8896
         },
         "val": {
-          "events": 1721615,
-          "fraud": 2491
+          "events": 433579,
+          "fraud": 710
         },
         "test": {
           "events": 1723938,
@@ -124,62 +278,62 @@
         }
       },
       "validation": {
-        "events": 1721615,
-        "fraud": 2491,
-        "pr_auc": 0.83372056191646,
-        "roc_auc": 0.9981141016382257,
-        "alert_rate": 0.005000537286210913,
-        "recall": 0.9429947812123645,
-        "precision": 0.2728539900104542,
-        "dollar_recall": 0.9525065422058105
+        "events": 433579,
+        "fraud": 710,
+        "pr_auc": 0.9492405566517249,
+        "roc_auc": 0.9976993983054235,
+        "alert_rate": 0.005000242170400319,
+        "recall": 0.9591549295774648,
+        "precision": 0.31411439114391143,
+        "dollar_recall": 0.9503147602081299
       },
       "test": {
         "events": 1723938,
         "fraud": 2087,
-        "pr_auc": 0.7625119498036691,
-        "roc_auc": 0.9965271255174954,
-        "alert_rate": 0.004679982690792824,
-        "recall": 0.9089602299952084,
-        "precision": 0.235126425384234,
-        "dollar_recall": 0.9107820987701416
+        "pr_auc": 0.9584490192868034,
+        "roc_auc": 0.9999571988673959,
+        "alert_rate": 0.004646918856710624,
+        "recall": 1.0,
+        "precision": 0.260516789414555,
+        "dollar_recall": 1.0
       },
       "test_budgets": {
         "0.001": {
-          "threshold": 0.04672447355581509,
-          "alert_rate": 0.0007906316816498041,
-          "recall": 0.562050790608529,
-          "precision": 0.8606016140865738,
-          "recall_ceiling": 0.6530905606133206,
-          "dollar_recall": 0.6293715834617615
+          "threshold": 0.9840419885926964,
+          "alert_rate": 0.0005290213453152027,
+          "recall": 0.4317201724964063,
+          "precision": 0.9879385964912281,
+          "recall_ceiling": 0.4369908960229995,
+          "dollar_recall": 0.45712390542030334
         },
         "0.005": {
-          "threshold": 7.003954714729664e-05,
-          "alert_rate": 0.004679982690792824,
-          "recall": 0.9089602299952084,
-          "precision": 0.235126425384234,
+          "threshold": 0.004185431777487253,
+          "alert_rate": 0.004646918856710624,
+          "recall": 1.0,
+          "precision": 0.260516789414555,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.9107820987701416
+          "dollar_recall": 1.0
         },
         "0.01": {
-          "threshold": 1.3161047715235417e-05,
-          "alert_rate": 0.009719027018373051,
-          "recall": 0.9472927647340681,
-          "precision": 0.1179946284691137,
+          "threshold": 0.0016202822244380027,
+          "alert_rate": 0.009571109865900049,
+          "recall": 1.0,
+          "precision": 0.12648484848484848,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.9375631809234619
+          "dollar_recall": 1.0
         },
         "0.02": {
-          "threshold": 2.8779962516192906e-06,
-          "alert_rate": 0.019794215337210503,
-          "recall": 0.971729755630091,
-          "precision": 0.05943031297620443,
+          "threshold": 0.0006947392530891957,
+          "alert_rate": 0.0193150797766509,
+          "recall": 1.0,
+          "precision": 0.06267643702324464,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.9693700671195984
+          "dollar_recall": 1.0
         }
       },
-      "features_sha256": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd",
-      "featurize_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
-      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "features_sha256": "62a42eaf804e8a08f79784bdc6f9c1f4118738d183392d339dd47fe0f90d167d",
+      "featurize_revision": "7fafbc1f629da6b4dfeafa2d9aff696990663bf2",
+      "train_revision": "7fafbc1f629da6b4dfeafa2d9aff696990663bf2",
       "lightgbm_version": "4.7.0",
       "params": {
         "objective": "binary",
@@ -198,22 +352,176 @@
         "deterministic": true,
         "force_row_wise": true,
         "verbose": -1
+      },
+      "calibration": {
+        "method": "platt",
+        "fit_on": "validation",
+        "slope": 0.5666642695373779,
+        "intercept": -0.01877658895522594
+      },
+      "test_calibration": {
+        "uncalibrated": {
+          "brier": 0.00018387814569395945,
+          "log_loss": 0.0007574373564088023,
+          "expected_fraud": 2180.682897600566,
+          "fraud": 2087,
+          "ece": 0.00013217587141400712,
+          "bins": [
+            {
+              "from": 0.0,
+              "to": 0.0001,
+              "events": 1717065,
+              "mean_probability": 2.997314198042572e-07,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.0001,
+              "to": 0.001,
+              "events": 3284,
+              "mean_probability": 0.00031097630504991445,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.001,
+              "to": 0.01,
+              "events": 858,
+              "mean_probability": 0.0031472454747384416,
+              "fraud_rate": 0.005827505827505828,
+              "fraud": 5
+            },
+            {
+              "from": 0.01,
+              "to": 0.05,
+              "events": 244,
+              "mean_probability": 0.023100981017993565,
+              "fraud_rate": 0.06967213114754098,
+              "fraud": 17
+            },
+            {
+              "from": 0.05,
+              "to": 0.1,
+              "events": 83,
+              "mean_probability": 0.0713777342107034,
+              "fraud_rate": 0.25301204819277107,
+              "fraud": 21
+            },
+            {
+              "from": 0.1,
+              "to": 0.2,
+              "events": 61,
+              "mean_probability": 0.14339706154960988,
+              "fraud_rate": 0.3114754098360656,
+              "fraud": 19
+            },
+            {
+              "from": 0.2,
+              "to": 0.5,
+              "events": 153,
+              "mean_probability": 0.3457607608738046,
+              "fraud_rate": 0.5294117647058824,
+              "fraud": 81
+            },
+            {
+              "from": 0.5,
+              "to": 1.0,
+              "events": 2190,
+              "mean_probability": 0.9603822136945266,
+              "fraud_rate": 0.8876712328767123,
+              "fraud": 1944
+            }
+          ]
+        },
+        "calibrated": {
+          "brier": 0.00017211462688868358,
+          "log_loss": 0.0006630569816848259,
+          "expected_fraud": 2297.4066025774487,
+          "fraud": 2087,
+          "ece": 0.0001551575935656169,
+          "bins": [
+            {
+              "from": 0.0,
+              "to": 0.0001,
+              "events": 1542727,
+              "mean_probability": 1.7584106238490047e-05,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.0001,
+              "to": 0.001,
+              "events": 156758,
+              "mean_probability": 0.0002673414296388392,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.001,
+              "to": 0.01,
+              "events": 19692,
+              "mean_probability": 0.0026278256046019586,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.01,
+              "to": 0.05,
+              "events": 1906,
+              "mean_probability": 0.020023366280222596,
+              "fraud_rate": 0.001049317943336831,
+              "fraud": 2
+            },
+            {
+              "from": 0.05,
+              "to": 0.1,
+              "events": 248,
+              "mean_probability": 0.06995532219277922,
+              "fraud_rate": 0.020161290322580645,
+              "fraud": 5
+            },
+            {
+              "from": 0.1,
+              "to": 0.2,
+              "events": 179,
+              "mean_probability": 0.14040954642731804,
+              "fraud_rate": 0.1787709497206704,
+              "fraud": 32
+            },
+            {
+              "from": 0.2,
+              "to": 0.5,
+              "events": 241,
+              "mean_probability": 0.34991268344428705,
+              "fraud_rate": 0.43983402489626555,
+              "fraud": 106
+            },
+            {
+              "from": 0.5,
+              "to": 1.0,
+              "events": 2187,
+              "mean_probability": 0.919820921776332,
+              "fraud_rate": 0.8879743941472337,
+              "fraud": 1942
+            }
+          ]
+        }
       }
     },
     "graph": {
       "feature_set": "graph",
-      "best_iteration": 999,
+      "best_iteration": 1000,
       "alert_budget": 0.005,
-      "threshold": 6.315892251051586e-06,
+      "threshold": 0.004102816825216104,
       "label_delay": "720h0m0s",
       "split": {
         "train": {
-          "events": 5133655,
-          "fraud": 7115
+          "events": 6421691,
+          "fraud": 8896
         },
         "val": {
-          "events": 1721615,
-          "fraud": 2491
+          "events": 433579,
+          "fraud": 710
         },
         "test": {
           "events": 1723938,
@@ -221,62 +529,62 @@
         }
       },
       "validation": {
-        "events": 1721615,
-        "fraud": 2491,
-        "pr_auc": 0.6553911900836499,
-        "roc_auc": 0.9946167290801288,
-        "alert_rate": 0.005000537286210913,
-        "recall": 0.8338016860698515,
-        "precision": 0.24125914740387966,
-        "dollar_recall": 0.861157238483429
+        "events": 433579,
+        "fraud": 710,
+        "pr_auc": 0.9380741802121648,
+        "roc_auc": 0.9985632481140653,
+        "alert_rate": 0.005000242170400319,
+        "recall": 0.967605633802817,
+        "precision": 0.3168819188191882,
+        "dollar_recall": 0.9649080038070679
       },
       "test": {
         "events": 1723938,
         "fraud": 2087,
-        "pr_auc": 0.3457538907669418,
-        "roc_auc": 0.9821479900421745,
-        "alert_rate": 0.009975416749326251,
-        "recall": 0.7005270723526593,
-        "precision": 0.08501482816770367,
-        "dollar_recall": 0.7332109808921814
+        "pr_auc": 0.9390715112428405,
+        "roc_auc": 0.9999381934569936,
+        "alert_rate": 0.004670121547294624,
+        "recall": 1.0,
+        "precision": 0.25922245683765993,
+        "dollar_recall": 1.0
       },
       "test_budgets": {
         "0.001": {
-          "threshold": 0.0006101092465680434,
-          "alert_rate": 0.0012500449552130064,
-          "recall": 0.38380450407283184,
-          "precision": 0.3716937354988399,
-          "recall_ceiling": 1.0,
-          "dollar_recall": 0.37003475427627563
+          "threshold": 0.9848511863317413,
+          "alert_rate": 0.000765688789272004,
+          "recall": 0.592237661715381,
+          "precision": 0.9363636363636364,
+          "recall_ceiling": 0.6324868231911835,
+          "dollar_recall": 0.6409049034118652
         },
         "0.005": {
-          "threshold": 6.315892251051586e-06,
-          "alert_rate": 0.009975416749326251,
-          "recall": 0.7005270723526593,
-          "precision": 0.08501482816770367,
+          "threshold": 0.004102816825216104,
+          "alert_rate": 0.004670121547294624,
+          "recall": 1.0,
+          "precision": 0.25922245683765993,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.7332109808921814
+          "dollar_recall": 1.0
         },
         "0.01": {
-          "threshold": 1.5910454197053671e-06,
-          "alert_rate": 0.0195558076914599,
-          "recall": 0.8001916626736943,
-          "precision": 0.049535787381722186,
+          "threshold": 0.0018075400691198644,
+          "alert_rate": 0.00952238421567365,
+          "recall": 1.0,
+          "precision": 0.12713206627680312,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.8285541534423828
+          "dollar_recall": 1.0
         },
         "0.02": {
-          "threshold": 4.381198228287044e-07,
-          "alert_rate": 0.03627624659355499,
-          "recall": 0.8821274556780067,
-          "precision": 0.029438101634206404,
+          "threshold": 0.0008596443628405378,
+          "alert_rate": 0.0194803989470619,
+          "recall": 1.0,
+          "precision": 0.062144537414763425,
           "recall_ceiling": 1.0,
-          "dollar_recall": 0.8985291123390198
+          "dollar_recall": 1.0
         }
       },
-      "features_sha256": "cb88ce79ade6039533f7a8037ab17d196db7b439c7a73e3a45ce4a20446df6cd",
-      "featurize_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
-      "train_revision": "411d2af57e8e0bac827f03c0dcd2bac796f1ef52",
+      "features_sha256": "62a42eaf804e8a08f79784bdc6f9c1f4118738d183392d339dd47fe0f90d167d",
+      "featurize_revision": "7fafbc1f629da6b4dfeafa2d9aff696990663bf2",
+      "train_revision": "7fafbc1f629da6b4dfeafa2d9aff696990663bf2",
       "lightgbm_version": "4.7.0",
       "params": {
         "objective": "binary",
@@ -294,7 +602,211 @@
         "seed": 7,
         "deterministic": true,
         "force_row_wise": true,
-        "verbose": -1
+        "verbose": -1,
+        "monotone_constraints": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "calibration": {
+        "method": "platt",
+        "fit_on": "validation",
+        "slope": 0.4907063784183454,
+        "intercept": -0.6096493708124604
+      },
+      "test_calibration": {
+        "uncalibrated": {
+          "brier": 0.00023051365087075408,
+          "log_loss": 0.0015937560585688162,
+          "expected_fraud": 2332.7761887960673,
+          "fraud": 2087,
+          "ece": 0.0002002006255873269,
+          "bins": [
+            {
+              "from": 0.0,
+              "to": 0.0001,
+              "events": 1717761,
+              "mean_probability": 2.5100961116490936e-07,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.0001,
+              "to": 0.001,
+              "events": 2711,
+              "mean_probability": 0.0003068447167042035,
+              "fraud_rate": 0.0007377351530800443,
+              "fraud": 2
+            },
+            {
+              "from": 0.001,
+              "to": 0.01,
+              "events": 747,
+              "mean_probability": 0.0031184204430552372,
+              "fraud_rate": 0.01740294511378849,
+              "fraud": 13
+            },
+            {
+              "from": 0.01,
+              "to": 0.05,
+              "events": 207,
+              "mean_probability": 0.02289428793891022,
+              "fraud_rate": 0.1111111111111111,
+              "fraud": 23
+            },
+            {
+              "from": 0.05,
+              "to": 0.1,
+              "events": 56,
+              "mean_probability": 0.07039857988657769,
+              "fraud_rate": 0.19642857142857142,
+              "fraud": 11
+            },
+            {
+              "from": 0.1,
+              "to": 0.2,
+              "events": 46,
+              "mean_probability": 0.14843954177494012,
+              "fraud_rate": 0.30434782608695654,
+              "fraud": 14
+            },
+            {
+              "from": 0.2,
+              "to": 0.5,
+              "events": 78,
+              "mean_probability": 0.3544921572378689,
+              "fraud_rate": 0.4230769230769231,
+              "fraud": 33
+            },
+            {
+              "from": 0.5,
+              "to": 1.0,
+              "events": 2332,
+              "mean_probability": 0.9802845852976981,
+              "fraud_rate": 0.8537735849056604,
+              "fraud": 1991
+            }
+          ]
+        },
+        "calibrated": {
+          "brier": 0.00021439565603028048,
+          "log_loss": 0.0009357361765415104,
+          "expected_fraud": 2416.8410505839483,
+          "fraud": 2087,
+          "ece": 0.00023851452212747976,
+          "bins": [
+            {
+              "from": 0.0,
+              "to": 0.0001,
+              "events": 1450289,
+              "mean_probability": 2.6143911530769384e-05,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.0001,
+              "to": 0.001,
+              "events": 244697,
+              "mean_probability": 0.0002605664858589832,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.001,
+              "to": 0.01,
+              "events": 24486,
+              "mean_probability": 0.0024813164918388595,
+              "fraud_rate": 0.0,
+              "fraud": 0
+            },
+            {
+              "from": 0.01,
+              "to": 0.05,
+              "events": 1719,
+              "mean_probability": 0.019540628390165866,
+              "fraud_rate": 0.008144269924374637,
+              "fraud": 14
+            },
+            {
+              "from": 0.05,
+              "to": 0.1,
+              "events": 207,
+              "mean_probability": 0.06944685717304641,
+              "fraud_rate": 0.08695652173913043,
+              "fraud": 18
+            },
+            {
+              "from": 0.1,
+              "to": 0.2,
+              "events": 117,
+              "mean_probability": 0.13906777180402866,
+              "fraud_rate": 0.2222222222222222,
+              "fraud": 26
+            },
+            {
+              "from": 0.2,
+              "to": 0.5,
+              "events": 167,
+              "mean_probability": 0.34540103252922466,
+              "fraud_rate": 0.5089820359281437,
+              "fraud": 85
+            },
+            {
+              "from": 0.5,
+              "to": 1.0,
+              "events": 2256,
+              "mean_probability": 0.9452520961407493,
+              "fraud_rate": 0.8617021276595744,
+              "fraud": 1944
+            }
+          ]
+        }
       }
     }
   },
@@ -307,32 +819,32 @@
       "flagged": 5242
     },
     "model": {
-      "alert_rate": 0.019794215337210503,
-      "precision": 0.05943031297620443,
-      "recall": 0.971729755630091,
-      "dollar_recall": 0.9693701447261628,
-      "flagged": 34124
+      "alert_rate": 0.0193150797766509,
+      "precision": 0.06267643702324464,
+      "recall": 1.0,
+      "dollar_recall": 1.0,
+      "flagged": 33298
     },
     "combined": {
-      "alert_rate": 0.022223537041355317,
-      "precision": 0.05348193777406557,
-      "recall": 0.9817920459990417,
-      "dollar_recall": 0.9782234870587304,
-      "flagged": 38312
+      "alert_rate": 0.021635348835050913,
+      "precision": 0.055954742881655854,
+      "recall": 1.0,
+      "dollar_recall": 1.0,
+      "flagged": 37298
     },
     "model_equal_volume": {
-      "alert_rate": 0.021963666906814516,
-      "precision": 0.05371857173040355,
-      "recall": 0.9746046957355055,
-      "dollar_recall": 0.9706127554718895,
-      "flagged": 37864
+      "alert_rate": 0.020909104619771707,
+      "precision": 0.05789824113632581,
+      "recall": 1.0,
+      "dollar_recall": 1.0,
+      "flagged": 36046
     },
     "blocks": {
-      "alert_rate": 0.004679982690792824,
-      "precision": 0.235126425384234,
-      "recall": 0.9089602299952084,
-      "dollar_recall": 0.910782207533528,
-      "flagged": 8068
+      "alert_rate": 0.004646918856710624,
+      "precision": 0.260516789414555,
+      "recall": 1.0,
+      "dollar_recall": 1.0,
+      "flagged": 8011
     },
     "per_rule": {
       "FRAUD_PAYEE": {
@@ -345,8 +857,8 @@
     "thresholds": {
       "block_budget": "0.005",
       "review_budget": "0.02",
-      "block": 7.003954714729664e-05,
-      "review": 2.8779962516192906e-06
+      "block": 0.004185431777487253,
+      "review": 0.0006947392530891957
     }
   }
 }

@@ -43,9 +43,8 @@ def evaluate_decisions(model_dir: Path, features_dir: Path) -> dict:
     # as model + Rules do, with its threshold set on the validation month.
     val = pl.read_parquet(model_dir / "val_predictions.parquet")["score"].to_numpy()
     threshold = float(np.quantile(val, 1 - out["combined"]["alert_rate"]))
-    test = pl.read_parquet(model_dir / "test_predictions.parquet").with_columns(
-        (1 / (1 + (-pl.col("raw_score")).exp())).alias("p"))
-    flagged_ids = test.filter(pl.col("p") > threshold).select("event_id").with_columns(pl.lit(True).alias("eq"))
+    test = pl.read_parquet(model_dir / "test_predictions.parquet")
+    flagged_ids = test.filter(pl.col("score") > threshold).select("event_id").with_columns(pl.lit(True).alias("eq"))
     d = d.join(flagged_ids, on="event_id", how="left").with_columns(pl.col("eq").fill_null(False))
     out["model_equal_volume"] = score(pl.col("eq"))
     out["blocks"] = score(pl.col("action") == 2)

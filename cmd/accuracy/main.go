@@ -55,6 +55,9 @@ func run(log *slog.Logger) error {
 	if *out == "" {
 		*out = *modelDir
 	}
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

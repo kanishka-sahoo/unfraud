@@ -73,7 +73,11 @@ var Profile = profile.Profile{
 		"fico_score":        "cardholder's FICO credit score",
 	},
 	// Three months warm up the real-time features before training starts.
-	Split: profile.Split{Train: date(2015, 1, 1), Validation: date(2018, 1, 1), Test: date(2019, 1, 1)},
+	// Training runs up to the last quarter before the test year, which
+	// validates (early stopping, calibration, thresholds): fraud before 2018
+	// looks different, and a model trained only on it misses most of 2019's
+	// (ADR-0020).
+	Split: profile.Split{Train: date(2015, 1, 1), Validation: date(2018, 10, 1), Test: date(2019, 1, 1)},
 	// Chosen on the training years only: merchants used by 21-100 cards in
 	// 30 days carry 3.2x the base fraud rate, those used by more 0.8x.
 	Graph: &profile.GraphConfig{

@@ -13,6 +13,42 @@ ROWS = [
 ]
 
 
+def calibration_section(runs: dict) -> list[str]:
+    runs = {k: v for k, v in runs.items() if "test_calibration" in v}
+    if not runs:
+        return []
+    lines = [
+        "",
+        "### Calibration (test period)",
+        "",
+        "Each model's raw scores are mapped to probabilities with Platt scaling fitted on the validation period "
+        "(`train/src/unfraud_train/calibration.py`). It keeps the ranking, so PR-AUC and recall are unchanged. "
+        "Expected fraud is the sum of the probabilities; ECE weights each bin's gap between mean probability and "
+        "fraud rate by its share of Events, so it is dominated by the many Events near zero.",
+        "",
+        "| Configuration | Slope | Intercept | Expected fraud (raw → calibrated) | Actual fraud | Log loss | Brier | ECE |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for name, label in ROWS:
+        r = runs.get(name)
+        if not r:
+            continue
+        c, u, k = r["calibration"], r["test_calibration"]["uncalibrated"], r["test_calibration"]["calibrated"]
+        lines.append(
+            f"| {label} | {c['slope']:.3f} | {c['intercept']:.3f} | {u['expected_fraud']:,.0f} → {k['expected_fraud']:,.0f} | "
+            f"{k['fraud']:,} | {u['log_loss']:.5f} → {k['log_loss']:.5f} | {u['brier']:.6f} → {k['brier']:.6f} | "
+            f"{u['ece']:.2e} → {k['ece']:.2e} |"
+        )
+    served = runs.get("realtime")
+    if served:
+        lines += ["", "Reliability of the served model (+ real-time features), calibrated:", "",
+                  "| Probability | Events | Mean probability | Fraud rate | Fraud |", "|---|---|---|---|---|"]
+        for b in served["test_calibration"]["calibrated"]["bins"]:
+            lines.append(f"| {b['from']:g}–{b['to']:g} | {b['events']:,} | {b['mean_probability']:.4%} | "
+                         f"{b['fraud_rate']:.4%} | {b['fraud']:,} |")
+    return lines
+
+
 def decisions_section(models: Path, features: Path | None) -> tuple[list[str], dict | None]:
     served = models / "lgbm-realtime"
     if features is None or not (served / "decisions.parquet").exists():
@@ -40,7 +76,7 @@ def decisions_section(models: Path, features: Path | None) -> tuple[list[str], d
         lines.append(f"| {label} | {r['alert_rate']:.2%} | {r['precision']:.1%} | {r['recall']:.1%} | {r['dollar_recall']:.1%} |")
     if not ev["per_rule"]:
         lines += ["", "Every Rule is retired on this Profile: none was as precise on the validation period as the model "
-                  "at the review budget (`internal/profile/payments`)."]
+                  "at the review budget (`internal/profile/tabformer/rules.go`)."]
     else:
         lines += ["", "| Rule | Hits | Precision | Fraud caught |", "|---|---|---|---|"]
     for code, r in ev["per_rule"].items():
@@ -188,6 +224,7 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
         f"Features table sha256 `{first['features_sha256'][:16]}…`, LightGBM {first['lightgbm_version']}, "
         f"featurize at `{first['featurize_revision'][:12]}`.",
     ]
+    lines += calibration_section(runs)
     extra, decisions = decisions_section(models, features)
     lines += extra
     lines += rings_section(models, features)
@@ -201,7 +238,7 @@ def report(models: Path, out: Path, features: Path | None = None) -> str:
         "runs": {k: {key: v[key] for key in ("feature_set", "best_iteration", "alert_budget", "threshold",
                                               "label_delay", "split", "validation", "test", "test_budgets", "features_sha256",
                                               "featurize_revision", "train_revision", "lightgbm_version",
-                                              "params")}
+                                              "params", "calibration", "test_calibration") if key in v}
                  for k, v in runs.items()},
         "decisions": decisions,
     }

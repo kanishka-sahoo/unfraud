@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"testing"
 	"time"
@@ -31,13 +32,13 @@ func fraud(at int64, card string) *unfraudv1.Envelope {
 		LabelRelease: &unfraudv1.LabelRelease{Label: unfraudv1.Label_LABEL_FRAUD, Entities: map[string]string{"card": card}}}}
 }
 
-// feed returns the [cards, links, fraud_cards] features of each Event.
-func feed(t *testing.T, g *Graph, envs ...*unfraudv1.Envelope) [][3]float64 {
+// feed returns the features of each Event.
+func feed(t *testing.T, g *Graph, envs ...*unfraudv1.Envelope) [][]float64 {
 	t.Helper()
-	var out [][3]float64
+	var out [][]float64
 	for _, env := range envs {
 		if v := g.Process(env); v != nil {
-			out = append(out, [3]float64{v[0], v[1], v[2]})
+			out = append(out, v)
 		}
 	}
 	return out
@@ -51,41 +52,17 @@ func newGraph(t *testing.T) *Graph {
 	return g
 }
 
-func TestCardsJoinThroughSharedDevicesAcrossHops(t *testing.T) {
-	g := newGraph(t)
-	got := feed(t, g,
-		event(0, "a", "d1"), // new card, new device
-		event(1, "b", "d1"), // joins a via d1
-		event(2, "b", "d2"), // b brings d2 into the component
-		event(3, "c", "d2"), // c joins a-b through d2: two hops from a
-		event(4, "e", ""),   // no device: a lone card
-	)
-	want := [][3]float64{{1, 1, 0}, {2, 1, 0}, {2, 2, 0}, {3, 2, 0}, {1, 0, 0}}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("event %d: %v, want %v", i, got[i], want[i])
-		}
-	}
+// same compares feature vectors, treating NaN as equal to NaN.
+func same(a, b []float64) bool {
+	return slices.EqualFunc(a, b, func(x, y float64) bool { return x == y || math.IsNaN(x) && math.IsNaN(y) })
 }
 
-func TestSuperNodesNeverLink(t *testing.T) {
-	g := newGraph(t)
-	got := feed(t, g,
-		event(0, "a", "shared"), event(0, "b", "shared"), event(0, "c", "shared"),
-		event(1, "d", "shared"), // a fourth card: "shared" exceeds MaxDegree 3
-	)
-	if got[2] != [3]float64{3, 1, 0} {
-		t.Errorf("third card: %v", got[2])
-	}
-	if got[3] != [3]float64{1, 0, 0} {
-		t.Errorf("fourth card should see a Super-node and stay alone: %v", got[3])
-	}
-}
+var nan = math.NaN()
 
-func TestFraudCountsOtherCardsReleasedLabels(t *testing.T) {
+func TestPayeeCountsOtherCardsReleasedFraud(t *testing.T) {
 	g := newGraph(t)
 	got := feed(t, g,
-		event(0, "a", "d1"),
+		event(0, "a", "d1"), // nobody else used d1
 		event(1, "b", "d1"),
 		fraud(2, "a"),
 		event(3, "b", "d1"), // a's fraud is visible to b
@@ -93,8 +70,39 @@ func TestFraudCountsOtherCardsReleasedLabels(t *testing.T) {
 		event(5, "b", "d1"), // b's own fraud is not counted for b
 		event(6, "c", "d1"), // c sees both
 	)
-	if got[2][2] != 1 || got[3][2] != 1 || got[4][2] != 2 {
-		t.Errorf("fraud counts %v %v %v, want 1 1 2", got[2][2], got[3][2], got[4][2])
+	want := [][2]float64{{0, nan}, {0, 0}, {1, 1}, {1, 1}, {2, 1}}
+	for i, w := range want {
+		if !same(got[i][:2], w[:]) {
+			t.Errorf("event %d: payee features %v, want %v", i, got[i][:2], w)
+		}
+	}
+}
+
+func TestNeighborsAreCardsSharingAnyOfTheCardsAttributes(t *testing.T) {
+	g := newGraph(t)
+	got := feed(t, g,
+		event(0, "a", "d1"), event(0, "x", "d1"),
+		event(1, "b", "d1"), // b shares d1 with a and x
+		fraud(2, "a"),
+		event(3, "b", "d2"), // a new device: nobody else used d2, but a still shares d1
+	)
+	if w := []float64{0, 0}; !same(got[2][2:4], w) {
+		t.Errorf("b's neighbours on d1 before the release: %v, want %v", got[2][2:4], w)
+	}
+	if w := []float64{0, nan, 1, 0.5}; !same(got[3][:4], w) {
+		t.Errorf("b on d2: %v, want %v", got[3][:4], w)
+	}
+}
+
+func TestSuperNodesAreNotNeighborhoods(t *testing.T) {
+	g := newGraph(t)
+	got := feed(t, g,
+		event(0, "a", "shared"), event(0, "b", "shared"), event(0, "c", "shared"),
+		fraud(1, "a"),
+		event(2, "d", "shared"), // a fourth card: "shared" exceeds MaxDegree 3
+	)
+	if w := []float64{1, 1.0 / 3, 0, nan}; !same(got[3][:4], w) {
+		t.Errorf("fourth card: %v, want %v: the payee still counts, the neighbourhood does not", got[3][:4], w)
 	}
 }
 
@@ -102,14 +110,15 @@ func TestRebuildDropsLinksOutsideTheWindow(t *testing.T) {
 	g := newGraph(t)
 	got := feed(t, g,
 		event(0, "a", "d1"),
-		event(40, "b", "d1"),  // within 48h of a: joins it
+		fraud(1, "a"),
+		event(40, "b", "d1"),  // within 48h of a
 		event(80, "c", "d1"),  // rebuilt at 80h: a's link (0h) left the window, b's (40h) is kept
 		event(200, "e", "d1"), // every earlier link has expired
 	)
-	want := [][3]float64{{1, 1, 0}, {2, 1, 0}, {2, 1, 0}, {1, 1, 0}}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("event %d: %v, want %v", i, got[i], want[i])
+	want := [][2]float64{{0, nan}, {1, 1}, {0, 0}, {0, nan}}
+	for i, w := range want {
+		if !same(got[i][:2], w[:]) {
+			t.Errorf("event %d: %v, want %v", i, got[i][:2], w)
 		}
 	}
 }
@@ -133,10 +142,10 @@ func TestCommunitiesSplitABridgedComponent(t *testing.T) {
 	envs = append(envs, event(1, "x", "da1"), event(1, "x", "db1"), fraud(2, "b1"), fraud(2, "b2"))
 	feed(t, g, envs...)
 	// After the next daily rebuild a new card on db2 joins the b community:
-	// the Component has 10 cards, the Community 4 (+ itself), with 2 fraud.
+	// 4 cards (+ itself), 2 of them fraud.
 	got := g.Process(event(30, "new", "db2"))
-	if got[0] != 10 || got[3] != 5 || got[4] != 2 {
-		t.Fatalf("component cards %v, community cards %v, community fraud %v; want 10, 5, 2", got[0], got[3], got[4])
+	if got[4] != 5 || got[5] != 0.5 {
+		t.Fatalf("community cards %v, fraud share %v; want 5, 0.5", got[4], got[5])
 	}
 	if r := g.Rings(); r != nil {
 		t.Fatalf("rings reported without a ring policy: %v", r)

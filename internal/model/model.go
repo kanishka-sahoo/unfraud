@@ -26,6 +26,27 @@ type Manifest struct {
 	Budgets map[string]struct {
 		Threshold float64 `json:"threshold"`
 	} `json:"test_budgets"`
+	// Calibration maps the trees' raw score to calibrated log-odds:
+	// slope * raw + intercept (Platt scaling, fitted on the validation
+	// period). Models without one use the raw score.
+	Calibration *struct {
+		Slope     float64 `json:"slope"`
+		Intercept float64 `json:"intercept"`
+	} `json:"calibration"`
+}
+
+// LogOdds turns the trees' raw score into calibrated log-odds.
+func (m *Manifest) LogOdds(raw float64) float64 {
+	if m.Calibration == nil {
+		return raw
+	}
+	return m.Calibration.Slope*raw + m.Calibration.Intercept
+}
+
+// Score returns x's calibrated log-odds and fraud probability.
+func (m *Model) Score(x []float64) (logOdds, probability float64) {
+	logOdds = m.LogOdds(m.Trees.Raw(x))
+	return logOdds, 1 / (1 + math.Exp(-logOdds))
 }
 
 // Threshold returns the probability threshold for an Alert Budget.
@@ -121,12 +142,19 @@ func Load(dir string, schema *profile.Schema, realtime []string) (*Model, error)
 	return &m, nil
 }
 
-// Explain returns the Contributions behind x's score: the bias, and per
-// feature its SHAP value and its input value (the category name for
-// categorical features, nil when missing).
+// Explain returns the Contributions behind x's score in calibrated
+// log-odds: the bias, and per feature its SHAP value and its input value (the
+// category name for categorical features, nil when missing). Calibration is
+// linear, so they still add up to Score's log-odds.
 func (m *Model) Explain(x []float64) (bias float64, shap []float64, values []any) {
 	phi := make([]float64, len(m.Features)+1)
 	m.Trees.Contributions(x, phi)
+	if c := m.Calibration; c != nil {
+		for i := range phi {
+			phi[i] *= c.Slope
+		}
+		phi[len(m.Features)] += c.Intercept
+	}
 	cats := map[string]bool{}
 	for _, c := range m.Categorical {
 		cats[c] = true

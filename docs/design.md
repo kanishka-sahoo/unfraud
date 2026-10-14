@@ -31,7 +31,7 @@ One dataset, IBM TabFormer: 2,000 synthetic US cardholders with several cards ea
 
 **Event Time** is the transaction's date and minute, read as UTC. Only October 2014 to December 2019 is kept: earlier years have few cardholders, and 2020 has no fraud labels yet.
 
-**Split** by Event Time (`profile.Split`): October–December 2014 only warms up the real-time features; 2015–2017 trains, 2018 validates, 2019 tests.
+**Split** by Event Time (`profile.Split`): October–December 2014 only warms up the real-time features; January 2015 to September 2018 trains, October–December 2018 validates, 2019 tests. Fraud before 2018 looks different, and a model trained only on 2015–2017 missed most of 2019's ([ADR-0020](./adr/0020-calibration-recent-training-and-neighbourhood-graph.md)).
 
 Limitations we state openly:
 
@@ -117,7 +117,7 @@ TabFormer's real-time features (`internal/profile/tabformer/features.go`):
 - **Velocity:** count and amount per Payer over 1h/24h/7d; distinct Payees per Payer (24h/7d); count per Payee (1h/24h); distinct Payers per Payee (24h/7d); distinct Payers per Customer (7d).
 - **Unusual behaviour:** amount ÷ the Payer's 30-day mean and ÷ the Payee's 7-day mean; seconds since the Payer's and the Payee's previous Event; first payment from this Payer to this Payee; channel or category different from the Payer's previous Event.
 - **Released Labels:** fraud Labels on the Payer (30d/90d), the Payee (30d) and the Customer (90d).
-- **Graph** (§7): the Component and Community the Payer joins, and released fraud in them.
+- **Graph** (§7): released fraud among the cards that used the Payee, among the cards sharing the Payer's small merchants, and in the Payer's Community.
 
 **Label Release** rule: nothing may read a Label before `event_time + delay`. The delay is 30 days, configurable, and recorded in the results.
 
@@ -128,7 +128,7 @@ State lives in Valkey as time-bucketed counters, with Lua scripts that update an
 1. **Rules** (`profile.Rule` values): all conditions hold → review or block, with a Reason Code. Rules only escalate the model's Decision. They are written before results and reviewed on the validation period only: a Rule less precise there than the model's top 2% (the review budget) is retired, kept in code with the evidence. A Rule only escalates, so a less precise one only adds alerts the model would have ranked lower.
 2. **Model**: LightGBM served in-process by our own Go evaluator (`internal/model/lgbm`; `leaves` can't read LightGBM 4.x models). CatBoost was planned as an offline comparison but has not been trained or evaluated.
 3. **Contributions**: Go TreeSHAP, checked in CI against LightGBM `pred_contrib` (tolerance 1e-9), alongside the Go-vs-Python score parity tests (fixtures in CI, real data with `make parity`). TreeSHAP costs about trees × leaves × depth², so it runs in case-svc for flagged Events only, not in the scoring path. Models are trained with `max_depth=10`, which kept scoring at about 21 µs and TreeSHAP at about 16 ms per Event on the earlier IEEE-CIS models.
-4. **Decision**: thresholds are set from the **Alert Budget** on the validation period.
+4. **Decision**: the raw score is calibrated into a probability by Platt scaling fitted on the validation period (stored in the model manifest; linear in log-odds, so rankings and Contributions' additivity are kept). Thresholds are set from the **Alert Budget** on the validation period.
 5. **Revision**: graph-svc re-scores Events with the graph model, and Ring Alerts (when enabled) revise recently approved Events. Revised Decisions update the Case; the Provisional Decision is never overwritten.
 
 Latency budget (targets, to be measured): consume → Decision under 10 ms p99 inside the scorer, under 50 ms p99 from end to end.
@@ -136,8 +136,9 @@ Latency budget (targets, to be measured): consume → Decision under 10 ms p99 i
 ## 7. Graph (rings)
 
 - **Attribute graph** (`internal/graph`): cards link through merchants they both paid. A merchant used by more than 100 cards within the 30-day window is a **Super-node** and never links. The cap was chosen on the training years only: merchants used by 21–100 cards carry 3.2× the base fraud rate, more popular ones 0.8×.
-- **Graph features did not hold up.** They lowered PR-AUC on validation (0.834 → 0.655) and on test (0.763 → 0.346): Component and Community sizes grow with the simulated population, and the model learns thresholds that stop holding. The scorer serves the model without them; graph-svc still revises with them, so the explorer and Revisions run, and the Case keeps the stricter Decision.
-- The graph is rebuilt daily in Event Time (union-find cannot delete edges) and only grows in between. Each rebuild runs a deterministic Louvain; features describe both the Component and the Community the Event joins, including other Payers' released fraud Labels.
+- **Features describe the neighbourhood, not the Component** ([ADR-0020](./adr/0020-calibration-recent-training-and-neighbourhood-graph.md)). Chains of shared merchants put about 3,800 cards into one Component every day, so its size and fraud count only tracked the population and the overall fraud level; with them the graph model fell to 0.346 test PR-AUC. The six features are: other cards that used the Payee in the window with released fraud (count and share); cards sharing any of the Payer's small merchants with released fraud (count and share, counted once per shared merchant); and the Payer's Louvain Community (size, and share of its other cards with released fraud). The five fraud features are trained with monotone constraints, so more fraud nearby can only raise risk.
+- **They still do not beat the real-time features.** On validation the graph model reaches 0.938 PR-AUC against the real-time model's 0.949 (test 0.939 against 0.958). The scorer serves the real-time model; graph-svc revises with the graph model, so the explorer and Revisions run, and the Case keeps the stricter Decision.
+- The graph is rebuilt daily in Event Time (union-find cannot delete edges) and only grows in between. Each rebuild runs a deterministic Louvain and recounts released fraud per merchant; Label Releases update those counts as they arrive.
 - **Rings and Ring Alerts**: a Community with at least 3 Payers, 2 of them with released fraud, flags its Payers' later Events and revises their Events approved in the previous 7 days. Off unless a Profile enables it after beating the model at equal alert volume on validation.
 - **No GNN in serving** ([ADR-0012](./adr/0012-no-gnn-in-serving.md)).
 
@@ -213,7 +214,7 @@ docs/           design.md, adr/
 
 ## 13. Milestones
 
-All eight are done; see `git log` for what each delivered.
+All nine are done; see `git log` for what each delivered.
 
 1. **Data foundations:** Profiles, Protobuf schema, replayer, kind + Strimzi, checksummed `make data`.
 2. **Features:** feature engine, Accuracy Run replay to Parquet, first IEEE-CIS model, parity tests in CI.
@@ -223,8 +224,10 @@ All eight are done; see `git log` for what each delivered.
 6. **Web app:** cases-api plus the Next.js app (cases and rings first, then overview, models, benchmarks, replay).
 7. **Hardening:** dead-letter topics, degraded mode, Shadow Models, Prometheus and Grafana, System Runs and paced latency, Playwright end-to-end tests. (KEDA and a standby graph-svc were not built; see §11.)
 8. **Named data:** IEEE-CIS and Elliptic replaced by fully named datasets (ADR-0018), then narrowed to TabFormer alone (ADR-0019).
+9. **Calibration and graph features:** calibrated probabilities, neighbourhood graph features and a recent training window (ADR-0020).
 
 ## 14. Open questions
 
-- Graph features that stay stable as the population grows (shares and rates rather than sizes) might hold up where these did not.
+- Graph features that beat the real-time ones: on TabFormer, released fraud among neighbouring cards mostly repeats what the merchant's own fraud Labels already say.
+- Thresholds from probabilities instead of Alert Budgets: with calibrated scores, the 0.5% block budget blocks payments with a fraud probability as low as 0.4%.
 - A full live replay needs case-svc to store Decisions faster (batched `COPY`, or storing only flagged Events' Decisions).

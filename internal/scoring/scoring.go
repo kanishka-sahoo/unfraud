@@ -39,7 +39,7 @@ type Decision struct {
 	EventID     string
 	EventTimeMs int64
 	Entities    map[string]string
-	Raw         float64 // model log-odds
+	Raw         float64 // calibrated model log-odds
 	Probability float64
 	ModelAction profile.Action
 	RuleAction  profile.Action
@@ -191,8 +191,7 @@ func (s *Scorer) decide(env *unfraudv1.Envelope, rt []float64) (*Decision, error
 	d := &Decision{EventID: ev.EventId, EventTimeMs: env.EventTimeMs, Entities: ev.Entities,
 		Input: make([]float64, len(s.m.Features))}
 	s.m.Encode(d.Input, ev.Num, ev.Cat, rt)
-	d.Raw = s.m.Trees.Raw(d.Input)
-	d.Probability = 1 / (1 + math.Exp(-d.Raw))
+	d.Raw, d.Probability = s.m.Score(d.Input)
 	switch {
 	case d.Probability > s.block:
 		d.ModelAction = profile.Block
@@ -217,7 +216,7 @@ func (s *Scorer) decide(env *unfraudv1.Envelope, rt []float64) (*Decision, error
 	if s.shadow != nil {
 		x := make([]float64, len(s.shadow.Features))
 		s.shadow.Encode(x, ev.Num, ev.Cat, rt)
-		p := 1 / (1 + math.Exp(-s.shadow.Trees.Raw(x)))
+		_, p := s.shadow.Score(x)
 		sd := &ShadowDecision{Version: s.shadowVersion, Probability: p}
 		switch {
 		case p > s.shadowBlock:

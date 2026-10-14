@@ -11,7 +11,8 @@ import lightgbm as lgb
 import numpy as np
 import polars as pl
 
-from .data import prepare
+from .calibration import apply, fit_platt, reliability, sigmoid
+from .data import MONOTONE_INCREASING, prepare
 from .metrics import at_budgets, evaluate, threshold_for_budget
 
 PARAMS = {
@@ -42,15 +43,13 @@ def git_revision() -> str:
         return "unknown"
 
 
-def sigmoid(x: np.ndarray) -> np.ndarray:
-    return 1 / (1 + np.exp(-x))
-
-
 def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_rounds: int,
           overrides: dict | None = None) -> dict:
     started = time.time()
-    params = {**PARAMS, **(overrides or {})}
     data = prepare(features_dir, feature_set)
+    params = {**PARAMS, **(overrides or {})}
+    if any(f in MONOTONE_INCREASING for f in data.features):
+        params["monotone_constraints"] = [int(f in MONOTONE_INCREASING) for f in data.features]
     tr, va, te = (data.splits[s] for s in ("train", "val", "test"))
     cat_idx = [data.features.index(c) for c in data.categorical]
 
@@ -59,15 +58,20 @@ def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_ro
     model = lgb.train(params, dtrain, num_boost_round=max_rounds, valid_sets=[dval],
                       callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(100)])
 
-    val_scores = model.predict(va.x, num_iteration=model.best_iteration)
-    threshold = threshold_for_budget(val_scores, budget)
+    val_raw = model.predict(va.x, num_iteration=model.best_iteration, raw_score=True)
     test_raw = model.predict(te.x, num_iteration=model.best_iteration, raw_score=True)
-    test_scores = sigmoid(test_raw)
+    calibration = fit_platt(val_raw, va.y)
+    val_scores, test_scores = apply(val_raw, calibration), apply(test_raw, calibration)
+    threshold = threshold_for_budget(val_scores, budget)
 
     out.mkdir(parents=True, exist_ok=True)
     model.save_model(out / "model.txt", num_iteration=model.best_iteration)
-    pl.DataFrame({"event_id": te.event_id, "raw_score": test_raw}).write_parquet(out / "test_predictions.parquet")
-    pl.DataFrame({"event_id": va.event_id, "score": val_scores}).write_parquet(out / "val_predictions.parquet")
+    # raw_score is the trees' output, which the Go evaluator must reproduce;
+    # score is the calibrated probability.
+    pl.DataFrame({"event_id": te.event_id, "raw_score": test_raw, "score": test_scores}).write_parquet(
+        out / "test_predictions.parquet")
+    pl.DataFrame({"event_id": va.event_id, "raw_score": val_raw, "score": val_scores}).write_parquet(
+        out / "val_predictions.parquet")
 
     manifest = json.loads((features_dir / "manifest.json").read_text())
     report = {
@@ -88,6 +92,9 @@ def train(features_dir: Path, out: Path, feature_set: str, budget: float, max_ro
         "validation": evaluate(va.y, val_scores, threshold, va.amount),
         "test": evaluate(te.y, test_scores, threshold, te.amount),
         "test_budgets": at_budgets(val_scores, te.y, test_scores, te.amount),
+        "calibration": calibration,
+        "test_calibration": {"uncalibrated": reliability(te.y, sigmoid(test_raw)),
+                             "calibrated": reliability(te.y, test_scores)},
         "features_sha256": data.features_sha256,
         "featurize_revision": manifest["git_revision"],
         "train_revision": git_revision(),

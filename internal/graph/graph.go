@@ -1,5 +1,5 @@
 // Package graph maintains a Profile's attribute graph over a sliding window
-// of Event Time and describes the Component an Event joins. Nodes (payers)
+// of Event Time and describes the neighbourhood of each Event. Nodes (payers)
 // connect through shared Link attributes (payees); attributes shared by too
 // many Nodes are Super-nodes and never link.
 //
@@ -16,26 +16,40 @@ import (
 	"github.com/kanishka-sahoo/unfraud/internal/profile"
 )
 
-// Columns names the features Process returns for an Event: the Component
-// (connected Nodes and Links) and the Community (its Louvain partition, which
-// matters because chains of shared attributes merge thousands of Nodes into
-// one Component).
-var Columns = []string{"graph_nodes", "graph_links", "graph_fraud_nodes", "graph_community_nodes", "graph_community_fraud"}
+// Columns names the features Process returns for an Event. Connected
+// Components are not among them: chains of shared attributes merge most Nodes
+// into one Component, so its size and fraud count only track the population
+// and the overall fraud level, which drift from year to year. The features
+// describe the Event's neighbourhood instead, as counts and shares:
+//
+//   - the payee: other Nodes that used it in the window, and how many of them
+//     carry released fraud (a common point of compromise);
+//   - the neighbours: Nodes that share any of the Node's non-Super-node
+//     attributes in the window, counted once per shared attribute;
+//   - the Community the Node belongs to (its Louvain partition).
+var Columns = []string{
+	"graph_payee_fraud_nodes", "graph_payee_fraud_share",
+	"graph_neighbor_fraud_nodes", "graph_neighbor_fraud_share",
+	"graph_community_nodes", "graph_community_fraud_share",
+}
 
 // Describe explains a graph feature column for Case Packets.
 func Describe(cfg profile.GraphConfig, column string) (string, bool) {
-	n, l := cfg.NodeNoun, cfg.LinkNoun
+	n, l, w := cfg.NodeNoun, cfg.LinkNoun, profile.WindowLabel(cfg.Window)
+	small := fmt.Sprintf("%s (those used by at most %d %s, last %s)", l, cfg.MaxDegree, n, w)
 	switch column {
-	case "graph_nodes":
-		return fmt.Sprintf("%s connected to this one through shared %s (last %s)", n, l, profile.WindowLabel(cfg.Window)), true
-	case "graph_links":
-		return l + " in that connected group", true
-	case "graph_fraud_nodes":
-		return "other " + n + " in that group with confirmed fraud", true
+	case "graph_payee_fraud_nodes":
+		return fmt.Sprintf("other %s used here in the last %s with confirmed fraud", n, w), true
+	case "graph_payee_fraud_share":
+		return fmt.Sprintf("share of the other %s used here in the last %s with confirmed fraud", n, w), true
+	case "graph_neighbor_fraud_nodes":
+		return fmt.Sprintf("%s with confirmed fraud that share this one's small %s", n, small), true
+	case "graph_neighbor_fraud_share":
+		return fmt.Sprintf("share of the %s sharing this one's small %s with confirmed fraud", n, small), true
 	case "graph_community_nodes":
 		return n + " in this one's tightly linked community", true
-	case "graph_community_fraud":
-		return "other " + n + " in that community with confirmed fraud", true
+	case "graph_community_fraud_share":
+		return "share of the other " + n + " in that community with confirmed fraud", true
 	}
 	return "", false
 }
@@ -47,18 +61,23 @@ type link struct {
 
 // Graph is not safe for concurrent use.
 type Graph struct {
-	cfg      profile.GraphConfig
-	links    []link                      // in the window, oldest first
-	degree   map[string]map[string]int64 // attribute -> node -> last seen
-	fraud    map[string]int64            // node -> fraud Label release time
-	uf       unionFind
-	comm     communities
-	rings    []Ring
-	rebuilt  int64
-	started  bool
-	window   int64
-	rebuild  int64
-	fraudTTL int64
+	cfg    profile.GraphConfig
+	links  []link                      // in the window, oldest first
+	degree map[string]map[string]int64 // attribute -> node -> last seen
+	uses   map[string]map[string]int64 // node -> attribute -> last seen
+	fraud  map[string]int64            // node -> fraud Label release time
+	// marked holds the Nodes counted in fraudUsers: fraud as of their Label
+	// Release or the last rebuild, whichever came later.
+	marked     map[string]bool
+	fraudUsers map[string]int // attribute -> marked Nodes that used it
+	uf         unionFind
+	comm       communities
+	rings      []Ring
+	rebuilt    int64
+	started    bool
+	window     int64
+	rebuild    int64
+	fraudTTL   int64
 }
 
 func New(cfg profile.GraphConfig) (*Graph, error) {
@@ -73,6 +92,9 @@ func New(cfg profile.GraphConfig) (*Graph, error) {
 
 func (g *Graph) reset() {
 	g.degree = map[string]map[string]int64{}
+	g.uses = map[string]map[string]int64{}
+	g.marked = map[string]bool{}
+	g.fraudUsers = map[string]int{}
 	g.uf = newUnionFind()
 	g.comm = communities{of: map[string]int{}}
 }
@@ -123,41 +145,59 @@ func (g *Graph) event(t int64, ev *unfraudv1.Event) []float64 {
 	return out
 }
 
-// features describes the union of the Node's Component and the Components of
-// its non-Super-node attributes, as the graph stands before this Event.
+// features describes the Event's payee, neighbours and Community, as the
+// graph stands before this Event. The Node's own fraud is never counted: it
+// is a card feature.
 func (g *Graph) features(t int64, node string, attrs []string) []float64 {
-	roots := map[int]bool{}
-	if i, ok := g.uf.index[node]; ok {
-		roots[g.uf.find(i)] = true
+	payeeFraud, payeeShare := 0.0, math.NaN()
+	if len(attrs) > 0 {
+		others, fraud := g.others(node, attrs[0])
+		payeeFraud = float64(fraud)
+		if others > 0 {
+			payeeShare = float64(fraud) / float64(others)
+		}
+	}
+	var neighbors, neighborFraud int
+	seen := map[string]bool{}
+	visit := func(a string) {
+		if seen[a] || g.superNode(a, node) {
+			return
+		}
+		seen[a] = true
+		o, f := g.others(node, a)
+		neighbors += o
+		neighborFraud += f
 	}
 	for _, a := range attrs {
-		if g.superNode(a, node) {
-			continue
-		}
-		if i, ok := g.uf.index[a]; ok {
-			roots[g.uf.find(i)] = true
-		}
+		visit(a)
 	}
-	var cards, links, fraud int
-	for r := range roots {
-		cards += g.uf.nodes[r]
-		links += g.uf.attrs[r]
-		fraud += g.uf.fraud[r]
+	for a := range g.uses[node] {
+		visit(a)
 	}
-	_, inGraph := g.uf.index[node]
-	if !inGraph {
-		cards++ // the Event's own Node joins the Component
-	}
-	if g.isFraud(t, node) && inGraph {
-		fraud-- // count other Nodes' fraud only; the Node's own is a card feature
-	}
-	for _, a := range attrs {
-		if _, known := g.uf.index[a]; !known && !g.superNode(a, node) {
-			links++
-		}
+	neighborShare := math.NaN()
+	if neighbors > 0 {
+		neighborShare = float64(neighborFraud) / float64(neighbors)
 	}
 	commCards, commFraud := g.communityOf(t, node, attrs)
-	return []float64{float64(cards), float64(links), float64(fraud), float64(commCards), float64(commFraud)}
+	commShare := math.NaN()
+	if commCards > 1 {
+		commShare = float64(commFraud) / float64(commCards-1)
+	}
+	return []float64{payeeFraud, payeeShare, float64(neighborFraud), neighborShare, float64(commCards), commShare}
+}
+
+// others counts the Nodes other than node that used attr in the window, and
+// how many of them are marked fraud.
+func (g *Graph) others(node, attr string) (others, fraud int) {
+	d := g.degree[attr]
+	others, fraud = len(d), g.fraudUsers[attr]
+	if _, ok := d[node]; ok {
+		others--
+		if g.marked[node] {
+			fraud--
+		}
+	}
+	return others, fraud
 }
 
 // communityOf describes the Community the Event joins: its Node's, or else
@@ -198,19 +238,33 @@ func (g *Graph) superNode(attr, node string) bool {
 }
 
 func (g *Graph) addLink(t int64, node, attr string) {
-	d := g.degree[attr]
-	if d == nil {
-		d = map[string]int64{}
-		g.degree[attr] = d
-	}
-	d[node] = t
-	if len(d) > g.cfg.MaxDegree {
+	g.use(node, attr, t)
+	if len(g.degree[attr]) > g.cfg.MaxDegree {
 		return // a Super-node: links already made through it stay until the next rebuild
 	}
 	ni := g.uf.add(node, false, g.isFraud(t, node))
 	ai := g.uf.add(attr, true, false)
 	g.uf.union(ni, ai)
 	g.comm.link(node, attr, g.isFraud(t, node))
+}
+
+// use records that node used attr at t.
+func (g *Graph) use(node, attr string, t int64) {
+	d := g.degree[attr]
+	if d == nil {
+		d = map[string]int64{}
+		g.degree[attr] = d
+	}
+	if _, ok := d[node]; !ok && g.marked[node] {
+		g.fraudUsers[attr]++
+	}
+	d[node] = t
+	u := g.uses[node]
+	if u == nil {
+		u = map[string]int64{}
+		g.uses[node] = u
+	}
+	u[attr] = t
 }
 
 func (g *Graph) isFraud(t int64, node string) bool {
@@ -228,6 +282,12 @@ func (g *Graph) labelRelease(t int64, lr *unfraudv1.LabelRelease) {
 	}
 	was := g.isFraud(t, node)
 	g.fraud[node] = t
+	if !g.marked[node] {
+		g.marked[node] = true
+		for a := range g.uses[node] {
+			g.fraudUsers[a]++
+		}
+	}
 	if i, ok := g.uf.index[node]; ok && !was {
 		g.uf.fraud[g.uf.find(i)]++
 	}
@@ -268,8 +328,9 @@ func (g *Graph) detectRings(t int64) {
 	}
 }
 
-// rebuildAt drops links older than the window and rebuilds the union-find
-// from the rest, recomputing Super-nodes and fraud counts.
+// rebuildAt drops links older than the window and expired fraud, and rebuilds
+// the union-find and Communities from the rest, recomputing Super-nodes and
+// fraud counts.
 func (g *Graph) rebuildAt(t int64) {
 	g.rebuilt = t
 	drop := 0
@@ -283,13 +344,11 @@ func (g *Graph) rebuildAt(t int64) {
 		}
 	}
 	g.reset()
+	for n := range g.fraud {
+		g.marked[n] = true
+	}
 	for _, l := range g.links {
-		d := g.degree[l.attr]
-		if d == nil {
-			d = map[string]int64{}
-			g.degree[l.attr] = d
-		}
-		d[l.node] = l.timeMs
+		g.use(l.node, l.attr, l.timeMs)
 	}
 	var adj [][]wedge
 	seen := map[[2]int]bool{}

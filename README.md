@@ -13,23 +13,25 @@ More: [overview](docs/screenshots/overview.png) · [case queue](docs/screenshots
 
 ## Results
 
-Time split: 2015–2017 trains, 2018 validates, 2019 tests (1.72M payments, 0.12% fraud). Thresholds are set on 2018 and applied unchanged to 2019.
+Time split: January 2015 to September 2018 trains, October–December 2018 validates, 2019 tests (1.72M payments, 0.12% fraud). Thresholds and probability calibration are set on validation and applied unchanged to 2019.
 
-| Model | PR-AUC | Fraud caught when flagging 0.5% of payments | Precision there |
-|---|---|---|---|
-| The payment's own fields (amount, merchant code, location, card, cardholder) | 0.457 | 51.5% | 13.7% |
-| + 24 real-time features (card and merchant velocity, unusual amounts, new merchants, past fraud) | **0.763** | **90.9%** | 23.5% |
-| + 5 graph features (cards linked through shared small merchants) | 0.346 | 70.1% | 8.5% |
+| Model | PR-AUC | Fraud caught when flagging 0.1% of payments | Precision there | Fraud caught when flagging 0.5% |
+|---|---|---|---|---|
+| The payment's own fields (amount, merchant code, location, card, cardholder) | 0.703 | 47.2% | 95.1% | 75.8% |
+| + 24 real-time features (card and merchant velocity, unusual amounts, new merchants, past fraud) | **0.958** | 43.2% | 98.8% | **100%** |
+| + 6 graph features (fraud among the cards sharing this card's merchants) | 0.939 | 59.2% | 93.6% | 100% |
 
 - Real-time features are what make it work: a payment looks very different once you know what the card, its cardholder and the merchant did in the hours and weeks before it.
-- Graph features made it worse, on validation and on test. Component sizes grow with the simulated population, and the model learns thresholds that stop holding. The scorer serves the model without them; graph-svc still runs, revising decisions and powering the graph explorer.
-- Hand-written rules rarely earn their place. A rule stays only if it is at least as precise on validation as the model's own top 2% of alerts; one of six survives ("this merchant recently took confirmed fraud", 15–18% precision).
+- Training on recent data matters as much. Fraud before 2018 looks different (2016 had a wave, 2017 almost none), and the same model trained only on 2015–2017 reached 0.763 ([ADR-0020](docs/adr/0020-calibration-recent-training-and-neighbourhood-graph.md)).
+- Graph features do not beat real-time features on validation (0.938 against 0.949), so the scorer serves the model without them, and graph-svc revises with them. They describe the card's neighbourhood: how many cards that used the same merchants later had confirmed fraud. Connected-component sizes made the model worse (0.346), because one component holds most cards and its size only tracks the population.
+- Probabilities are calibrated (Platt scaling fitted on validation). On 2019, payments scored above 50% were fraud 89% of the time (mean score 92%), and those scored 20–50% were fraud 44% of the time (mean 35%). Scores from 1% to 10% overstate risk: on 2019 they were fraud 0.1–2% of the time.
+- Hand-written rules rarely earn their place. A rule stays only if it is at least as precise on validation as the model's own top 2% of alerts; one of six survives ("this merchant recently took confirmed fraud", 14% precision on validation).
 - Go scores equal Python LightGBM exactly on all 1.72M test payments, and Go TreeSHAP matches LightGBM's to 1e-9.
 
 **The running system** (4-core, 8 GB laptop, `lite` profile):
 
-- The first 1.5M payments replayed into Kafka and scored in the cluster by one scorer pod at 500 a second from a backlog, with features in Valkey. 93.9% of probabilities are bit-identical to the offline Accuracy Run (the rest differ by at most 0.13, 1.4e-9 at p99), and 147 of 1,500,000 decisions differ: partitions run in parallel against shared feature state.
-- graph-svc revises every payment with graph features from one ordered stream; case-svc keeps the stricter decision per case. 78,163 cases, every one explained (TreeSHAP) and summarized, with no case-invariant violations (`make check-cases`).
+- The first 1.5M payments replayed into Kafka and scored in the cluster by one scorer pod at 468 a second from a backlog, with features in Valkey. 93.8% of probabilities are bit-identical to the offline Accuracy Run (the rest differ by at most 0.23, 2.1e-6 at p99), and 116 of 1,500,000 decisions differ: partitions run in parallel against shared feature state.
+- graph-svc revises every payment with graph features from one ordered stream; case-svc keeps the stricter decision per case. 49,493 cases, every one explained (TreeSHAP) and summarized, with no case-invariant violations (`make check-cases`).
 
 ## Run it
 
@@ -43,7 +45,7 @@ make cluster-up deploy images          # kind + Strimzi + CloudNativePG; Kafka, 
 make featurize PROFILE=tabformer       # Accuracy Run -> training tables (~20 min)
 make train PROFILE=tabformer           # raw, real-time and graph models (~75 min)
 make parity PROFILE=tabformer          # Go scores must equal Python's
-make accuracy PROFILE=tabformer MODEL=lgbm-realtime  # the scorer's decisions on 2018-2019, offline
+make accuracy PROFILE=tabformer MODEL=lgbm-realtime  # the scorer's decisions on late 2018 and 2019, offline
 make report PROFILE=tabformer          # results/tabformer-lightgbm.md
 
 # Serve
@@ -62,6 +64,7 @@ Summaries use a template writer unless you add an OpenRouter key: put it in `~/.
 
 ## What it does not do
 
+- 2019 was looked at while choosing the training window, so it is not an untouched holdout for that choice ([ADR-0020](docs/adr/0020-calibration-recent-training-and-neighbourhood-graph.md)); the choice rests on validation.
 - The data is simulated. The metrics say how well the engine finds TabFormer's fraud, not how it would do on a real bank's traffic, and the simulator makes some of it easy (73% of transactions in Italy are fraud).
 - The live demo replays the first 1.5M of 9M payments. All of them would take most of a day on the reference machine, mostly case-svc writing 18M decisions to Postgres; the published metrics come from the offline Accuracy Run over all of them.
 - It is local-only: no authentication, one Kafka broker, one replica per service. KEDA autoscaling, a hot-standby graph service and tracing are designed but not built, because they could not be validated on the reference machine.

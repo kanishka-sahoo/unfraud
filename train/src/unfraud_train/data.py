@@ -15,6 +15,15 @@ import polars as pl
 MAX_VOCAB = 1000
 
 AMOUNT = "amount_usd"
+
+# Released fraud among an Event's graph neighbours can only raise its risk.
+# Without the constraint, years whose fraud came in waves teach the model the
+# opposite (in 2016 high fraud shares came with lower risk), and that does not
+# hold later.
+MONOTONE_INCREASING = (
+    "graph_payee_fraud_nodes", "graph_payee_fraud_share",
+    "graph_neighbor_fraud_nodes", "graph_neighbor_fraud_share", "graph_community_fraud_share",
+)
 FEATURE_SETS = ("static", "realtime", "graph")
 SPLITS = ("train", "val", "test")
 
