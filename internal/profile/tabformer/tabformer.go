@@ -72,6 +72,19 @@ var Profile = profile.Profile{
 		"yearly_income":     "cardholder's yearly income in US dollars",
 		"fico_score":        "cardholder's FICO credit score",
 	},
+	Nouns: map[string]string{
+		Payer: "card", Payee: "merchant", Customer: "cardholder",
+		"amount_usd": "amount", "category": "merchant category", "channel": "channel",
+	},
+	Meanings: map[string]map[string]string{
+		"mcc":     mccMeanings,
+		"channel": {"in_person": "in person"},
+	},
+	Headline: []string{"amount_usd", "mcc", "channel", "entry_mode", "merchant_state", "errors", "card_brand", "card_type"},
+	Subject:  Payer,
+	Behaviour: []string{"payer_count_1h", "payer_count_24h", "payer_count_7d", "payer_amount_24h", "payer_amount_7d",
+		"payer_amount_ratio_30d", "payer_payees_24h", "payer_new_payee", "payer_since_last", "payer_fraud_labels_30d",
+		"graph_neighbor_fraud_nodes"},
 	// Three months warm up the real-time features before training starts.
 	// Training runs up to the last quarter before the test year, which
 	// validates (early stopping, calibration, thresholds): fraud before 2018

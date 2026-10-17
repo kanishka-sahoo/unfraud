@@ -1,33 +1,25 @@
 import type { Metadata } from "next";
-import { Schibsted_Grotesk, Spectral } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
-import { Rail, RailShell } from "@/components/rail";
-import { api } from "@/lib/api";
+import { AssistantShell } from "@/components/assistant";
+import { Sidebar, SidebarView } from "@/components/sidebar";
 import "./globals.css";
 
-const ui = Schibsted_Grotesk({ subsets: ["latin"], variable: "--font-schibsted" });
-const memo = Spectral({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"], variable: "--font-spectral" });
+const ui = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
   title: { default: "unfraud", template: "%s · unfraud" },
-  description: "Real-time fraud detection console",
+  description: "Real-time card fraud operations console",
 };
-
-async function ProfiledRail() {
-  const profiles = await api<string[]>("/api/profiles").catch(() => [] as string[]);
-  return <Rail profiles={profiles} />;
-}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${ui.variable} ${memo.variable}`}>
+    <html lang="en" className={`${ui.variable} ${mono.variable}`}>
       <body>
-        <div className="shell">
-          <Suspense fallback={<RailShell />}>
-            <ProfiledRail />
-          </Suspense>
-          <main className="main">{children}</main>
-        </div>
+        <AssistantShell sidebar={<Suspense fallback={<SidebarView path="" />}><Sidebar /></Suspense>}>
+          {children}
+        </AssistantShell>
       </body>
     </html>
   );

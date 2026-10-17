@@ -6,7 +6,7 @@ import (
 )
 
 var pk = Packet{
-	CaseID: "tabformer/2987001", Dataset: "tabformer", EventTime: "2017-12-02T00:00:00Z",
+	CaseID: "2987001", EventTime: "2017-12-02T00:00:00Z",
 	Decision: PacketDecision{Action: "block", Probability: 0.9873},
 	Entities: map[string]string{"payer": "2755_nan_nan", "payee": "SAMSUNG|Android 7.0"},
 	Factors: []Factor{

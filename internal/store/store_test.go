@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -156,10 +157,79 @@ func TestEqualActionsPreferTheEarlierStage(t *testing.T) {
 	if status != "pending" {
 		t.Fatalf("summary status after takeover %q, want pending (the old Summary describes another Decision)", status)
 	}
+	// A Case nobody asked a Summary for gets none after a takeover either.
+	s.UpsertCases(ctx, []Decision{dec("e", 2, 2, .99)})
+	s.UpsertCases(ctx, []Decision{dec("e", 1, 2, .97)})
+	s.Pool.QueryRow(ctx, `SELECT summary_status FROM cases WHERE event_id = 'e'`).Scan(&status)
+	if status != "none" {
+		t.Fatalf("unrequested summary status after takeover %q, want none", status)
+	}
 	var by int16
 	var version string
 	s.Pool.QueryRow(ctx, `SELECT flagged_by, model_version FROM cases WHERE event_id = 'd'`).Scan(&by, &version)
 	if len(need) != 1 || by != 1 || version != "m1" {
 		t.Fatalf("need %v, flagged_by %d, model %s; want a recompute, 1, m1", need, by, version)
+	}
+}
+
+func TestSummariesAreWrittenOnlyWhenAsked(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, _, err := s.RecordDecisions(ctx, []Decision{dec("review", 1, 1, .2), dec("block", 1, 2, .9)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"review", "block"} {
+		k := CaseKey{Profile: "p", EventID: id}
+		if err := s.SetContributions(ctx, k, CaseContributions{Top: []Contribution{{Feature: "amount", Value: 12.5}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Nothing is summarized unasked, however strict (ADR-0022).
+	got, err := s.ClaimSummaries(ctx, 4)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("claimed %+v, %v; want nothing", got, err)
+	}
+	if err := s.RequestSummary(ctx, CaseKey{Profile: "p", EventID: "review"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = s.ClaimSummaries(ctx, 4); err != nil || len(got) != 1 || got[0].EventID != "review" {
+		t.Fatalf("claimed %+v, %v; want the requested review Case", got, err)
+	}
+	if err := s.RequestSummary(ctx, CaseKey{Profile: "p", EventID: "nope"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("requesting a missing Case: %v", err)
+	}
+	// Queue rows carry the Event's values, from the top Contributions here.
+	rows, err := s.ListCases(ctx, CaseFilter{Profile: "p", Status: "open"})
+	if err != nil || len(rows) != 2 || rows[0].Values["amount"] != 12.5 {
+		t.Fatalf("list %+v, %v", rows, err)
+	}
+}
+
+func TestPriorCasesAreTheEntitysEarlierCasesInTheWindow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	base := time.Unix(1_500_000_000, 0)
+	var ds []Decision
+	for i, h := range []int{-100, -50, -2, -1, 0, 1} { // hours from the Case at 0
+		d := dec(fmt.Sprintf("e%d", i), 1, 2, .9)
+		d.EventTime, d.Entities = base.Add(time.Duration(h)*time.Hour), map[string]string{"card": "c1"}
+		ds = append(ds, d)
+	}
+	other := dec("other", 1, 2, .9)
+	other.EventTime = base.Add(-time.Hour)
+	if _, _, err := s.RecordDecisions(ctx, append(ds, other)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.PriorCases(ctx, "p", "card", "c1", base, 72*time.Hour, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.EventID)
+	}
+	// e1 (-50h) is in the window but beyond the limit of 2; e4 is the Case itself.
+	if fmt.Sprint(ids) != "[e2 e3]" {
+		t.Fatalf("prior cases %v, want the two newest before the Case, oldest first", ids)
 	}
 }

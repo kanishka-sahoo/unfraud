@@ -2,3 +2,4 @@
 /data/raw/
 /data/features/
 /models/
+/.env

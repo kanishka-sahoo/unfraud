@@ -11,14 +11,11 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "graphology": "0.26.0",
-    "graphology-layout-forceatlas2": "^0.10.1",
     "marked": "^18.1.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "server-only": "^0.0.1",
-    "sigma": "4.0.0"
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",

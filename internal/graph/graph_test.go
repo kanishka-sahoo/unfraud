@@ -193,3 +193,17 @@ func TestNeighborhoodWalksCardsThroughDevices(t *testing.T) {
 		t.Fatalf("max nodes not enforced: %+v", sg)
 	}
 }
+
+func TestNeighborhoodDoesNotWalkThroughSuperNodes(t *testing.T) {
+	g := newGraph(t)
+	feed(t, g, event(0, "a", "shared"), event(0, "b", "shared"), event(0, "c", "shared"), event(0, "d", "shared"),
+		event(0, "a", "d1"), event(0, "e", "d1"))
+	sg := g.Neighborhood(2*hour, "a", 2, 100)
+	var ids []string
+	for _, n := range sg.Nodes {
+		ids = append(ids, fmt.Sprintf("%s:%s:%v", n.Kind, n.ID, n.SuperNode))
+	}
+	if got := fmt.Sprint(ids); got != "[card:a:false device:d1:false device:shared:true card:e:false]" {
+		t.Fatalf("2 hops from a: %s; the super-node's cards should not be reached", got)
+	}
+}

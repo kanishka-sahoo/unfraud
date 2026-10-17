@@ -1,5 +1,7 @@
 # LLM Summaries go through OpenRouter, asynchronously, and must pass a Grounding check
 
+The default driver is now Claude directly, and any Anthropic- or OpenAI-compatible endpoint works ([ADR-0021](./0021-claude-direct-for-summaries.md)); OpenRouter remains an option.
+
 The summarizer is a separate consumer and never affects a Decision. OpenRouter is the only gateway, so any model can be selected per Profile and per Case type. Benchmark runs pin `provider.order`, disable fallbacks and use temperature 0, and every Summary records the model and provider OpenRouter actually used. Summaries whose numbers or Entities don't appear in the Case Packet are regenerated once, then dropped. A `stub` driver lets the whole system and `make bench` run without an API key.
 
 ## Consequences

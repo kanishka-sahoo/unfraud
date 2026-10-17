@@ -232,6 +232,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{profile}/{event_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Ask for the Case's Summary to be written (Summaries are written only on request, ADR-0022). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profile: components["parameters"]["profile"];
+                    event_id: components["parameters"]["event_id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Queued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No such Case */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/graph/{profile}/{node}": {
         parameters: {
             query?: never;
@@ -457,6 +501,170 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/investigations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A Profile's Investigations (assistant conversations) with at least one question, newest first. */
+        get: {
+            parameters: {
+                query: {
+                    profile: string;
+                    /** @description Only those opened on this Case */
+                    case_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Investigation"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** @description Open an Investigation on a Case, a card, or neither (ADR-0022). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        profile: string;
+                        case_id?: string;
+                        card?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Opened */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvestigationView"];
+                    };
+                };
+                /** @description No such Case */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvestigationView"];
+                    };
+                };
+                /** @description No such Investigation */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigations/{id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Ask a question, answered as server-sent events (AssistantEvent): question, a step event as each lookup starts and ends, text as the answer is written, then done with the finished turn, or error. from_seq rewinds first: the messages from that question on are set aside (kept for audit) and this question replaces them. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        question: string;
+                        from_seq?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Event stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": components["schemas"]["AssistantEvent"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -507,9 +715,19 @@ export interface components {
             /** @enum {string|null} */
             disposition: "confirmed" | "dismissed" | "escalated" | null;
             /** @enum {string} */
-            summary_status: "pending" | "running" | "done" | "failed" | "skipped";
+            summary_status: "none" | "pending" | "running" | "done" | "failed" | "skipped";
             /** Format: date-time */
             created_at: string;
+            /** @description The payment's headline facts (not on Case) */
+            payment?: components["schemas"]["Fact"][];
+        };
+        Fact: {
+            feature: string;
+            description: string;
+            /** @description number, category, or null when missing */
+            value?: unknown;
+            /** @description what a coded value stands for, such as an MCC's merchant type */
+            meaning?: string;
         };
         Contribution: {
             feature: string;
@@ -524,16 +742,24 @@ export interface components {
             top: components["schemas"]["Contribution"][];
             other: number;
             raw_score: number;
+            values?: {
+                [key: string]: unknown;
+            };
         } | null;
         Factor: {
             feature: string;
             description: string;
             value?: unknown;
+            meaning?: string;
             effect: number;
         };
         Summary: {
             summary?: string;
             key_points?: string[] | null;
+            /** @description What the card's history, the merchant and the network add */
+            context?: string[] | null;
+            /** @description What to check next */
+            checks?: string[] | null;
             grounded?: boolean;
             problems?: string[];
             attempts?: number;
@@ -550,6 +776,7 @@ export interface components {
                 latency_ms?: number;
             };
             packet?: {
+                payment?: components["schemas"]["Fact"][] | null;
                 model_factors?: components["schemas"]["Factor"][] | null;
                 anonymized_features?: components["schemas"]["Factor"] | null;
                 rule_reasons?: {
@@ -588,9 +815,13 @@ export interface components {
         CaseDetail: {
             case: components["schemas"]["Case"];
             decisions: components["schemas"]["Decision"][];
+            /** @description The Event's described feature values, the payment's first */
+            facts: components["schemas"]["Fact"][];
         };
         Subgraph: {
             center: string;
+            /** @description Event Time the graph has reached (Unix ms); the neighbourhood is the one at that time */
+            as_of_ms?: number;
             truncated: boolean;
             nodes: {
                 id: string;
@@ -643,6 +874,74 @@ export interface components {
             started_at: string;
             /** Format: date-time */
             ended_at: string | null;
+        };
+        Investigation: {
+            id: string;
+            profile: string;
+            case_id: string | null;
+            card: string | null;
+            title: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        InvestigationView: components["schemas"]["Investigation"] & {
+            turns: components["schemas"]["Turn"][];
+            suggestions: string[];
+            tokens_used: number;
+            /** @description 0 is no limit */
+            token_budget: number;
+            /** @description stub when no API key is set */
+            model: string;
+        };
+        Turn: {
+            seq: number;
+            question: string;
+            /** Format: date-time */
+            asked_at: string;
+            steps: components["schemas"]["Step"][];
+            answer: string;
+            /** @enum {string} */
+            status: "answered" | "stopped" | "error" | "refused" | "pending";
+            /** @description Numbers and IDs in the answer that nothing looked up contains */
+            unverified: string[];
+            /** @description IDs in the answer and the console page each links to */
+            links: {
+                [key: string]: string;
+            };
+            model?: string;
+            cost_usd: number;
+            tokens: number;
+        };
+        Step: {
+            id: string;
+            tool?: string;
+            label?: string;
+            /** @enum {string} */
+            status: "running" | "done" | "error" | "note";
+            summary?: string;
+            error?: string;
+            note?: string;
+            table?: {
+                columns: string[];
+                rows: {
+                    text: string;
+                    href?: string;
+                    /** @enum {string} */
+                    tone?: "high" | "elevated" | "low";
+                }[][];
+                more?: number;
+            };
+        };
+        AssistantEvent: {
+            /** @enum {string} */
+            type: "question" | "step" | "text" | "done" | "error";
+            seq?: number;
+            step?: components["schemas"]["Step"];
+            text?: string;
+            turn?: components["schemas"]["Turn"];
+            message?: string;
         };
     };
     responses: never;

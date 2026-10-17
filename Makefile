@@ -95,10 +95,16 @@ deploy-model: ## Ship a model as an image and run it: make deploy-model PROFILE=
 	  --set-string '$(or $(SERVICE),scorer).models.$(PROFILE)=$(IMG)'
 	kubectl -n $(NAMESPACE) rollout status deploy/$(subst graph,graphsvc,$(or $(SERVICE),scorer))-$(PROFILE) --timeout=300s
 
-secrets: ## Load the OpenRouter key from ~/.config/unfraud/openrouter_key into the cluster
-	@test -s $(HOME)/.config/unfraud/openrouter_key || { echo "put your OpenRouter key in ~/.config/unfraud/openrouter_key (chmod 600)"; exit 1; }
-	kubectl -n $(NAMESPACE) create secret generic openrouter --from-file=api-key=$(HOME)/.config/unfraud/openrouter_key \
-	  --dry-run=client -o yaml | kubectl apply -f -
+secrets: ## Load LLM keys from the repo's .env (see .env.example) into the cluster
+	@test -f .env || { echo "copy .env.example to .env and set ANTHROPIC_API_KEY"; exit 1; }
+	@set -a; . ./.env; set +a; \
+	test -n "$$ANTHROPIC_API_KEY$$OPENAI_API_KEY$$OPENROUTER_API_KEY" || { echo ".env sets no API key"; exit 1; }; \
+	for pair in anthropic:$$ANTHROPIC_API_KEY openai:$$OPENAI_API_KEY openrouter:$$OPENROUTER_API_KEY; do \
+	  name=$${pair%%:*}; key=$${pair#*:}; test -n "$$key" || continue; \
+	  printf %s "$$key" | kubectl -n $(NAMESPACE) create secret generic $$name --from-file=api-key=/dev/stdin \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	done
+	-kubectl -n $(NAMESPACE) rollout restart deploy/assistant
 
 console: ## Open the web console on http://localhost:3000 (port-forward; new clusters also map :30080)
 	kubectl -n $(NAMESPACE) port-forward svc/web 3000:3000

@@ -25,8 +25,23 @@ func Ground(text string, pk Packet) []string {
 	if err != nil {
 		return []string{err.Error()}
 	}
-	packetText := string(raw)
-	allowed := packetNumbers(raw)
+	return ground(text, string(raw), packetNumbers(raw))
+}
+
+// GroundText checks text against any source text, such as everything an
+// Investigation looked up, by the same rules as Ground: every number found
+// in the source is allowed.
+func GroundText(text, source string) []string {
+	var allowed []float64
+	for _, m := range number.FindAllString(source, -1) {
+		if f, err := strconv.ParseFloat(strings.ReplaceAll(m, ",", ""), 64); err == nil {
+			allowed = append(allowed, f)
+		}
+	}
+	return ground(text, source, allowed)
+}
+
+func ground(text, packetText string, allowed []float64) []string {
 
 	var problems []string
 	rest := idToken.ReplaceAllStringFunc(text, func(tok string) string {
@@ -114,21 +129,29 @@ func packetNumbers(raw []byte) []float64 {
 	return out
 }
 
-// Summary is what a driver writes for a Case.
+// Summary is what a driver writes for a Case: what happened and the
+// pattern, the facts behind it, what the card's history, the merchant and
+// the network add, and what to check next.
 type Summary struct {
 	Text      string   `json:"summary"`
 	KeyPoints []string `json:"key_points"`
+	Context   []string `json:"context,omitempty"`
+	Checks    []string `json:"checks,omitempty"`
 }
 
-// All returns the summary text and key points together, for Grounding.
-func (s Summary) All() string { return s.Text + "\n" + strings.Join(s.KeyPoints, "\n") }
+// All returns every part of the Summary together, for Grounding.
+func (s Summary) All() string {
+	return strings.Join(append(append(append([]string{s.Text}, s.KeyPoints...), s.Context...), s.Checks...), "\n")
+}
 
 // Validate rejects empty or oversized summaries.
 func (s Summary) Validate() error {
-	if strings.TrimSpace(s.Text) == "" {
-		return fmt.Errorf("empty summary")
+	// Models occasionally return a placeholder ("x") that passes Grounding
+	// trivially; a brief has at least a sentence and one supporting point.
+	if len(strings.TrimSpace(s.Text)) < 40 || len(s.KeyPoints) == 0 {
+		return fmt.Errorf("summary too short")
 	}
-	if len(s.Text) > 2000 || len(s.KeyPoints) > 6 {
+	if len(s.Text) > 2000 || len(s.KeyPoints) > 6 || len(s.Context) > 6 || len(s.Checks) > 4 {
 		return fmt.Errorf("summary too long")
 	}
 	return nil

@@ -15,6 +15,8 @@ unit() { # name service local:remote
 [Unit]
 Description=unfraud $1 on the Tailscale address
 After=network-online.target
+# Never stop retrying: every redeploy replaces the pod being forwarded to.
+StartLimitIntervalSec=0
 
 [Service]
 # The address is looked up at start, so a changed Tailscale IP is picked up.

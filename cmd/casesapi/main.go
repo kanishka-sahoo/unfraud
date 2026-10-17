@@ -37,6 +37,7 @@ func run(log *slog.Logger) error {
 		namespace = flag.String("namespace", "unfraud", "namespace for replay Jobs")
 		replayImg = flag.String("replayer-image", "", "replayer image; empty disables replay control")
 		dataPath  = flag.String("data-path", "/data", "dataset folder on the node, for replay Jobs")
+		assistant = flag.String("assistant-url", "http://assistant:8080", "assistant service URL, for Investigations; empty turns them off")
 	)
 	flag.Parse()
 	pgURL := os.Getenv("PG_URL")
@@ -53,9 +54,10 @@ func run(log *slog.Logger) error {
 
 	seeds := strings.Split(*brokers, ",")
 	cfg := api.Config{
-		Store:    st,
-		Log:      log,
-		GraphURL: func(p string) string { return strings.Replace(*graphURL, "%s", p, 1) },
+		Store:        st,
+		Log:          log,
+		GraphURL:     func(p string) string { return strings.Replace(*graphURL, "%s", p, 1) },
+		AssistantURL: strings.TrimSuffix(*assistant, "/"),
 		Stream: func(ctx context.Context, p string, send func(api.LiveDecision) bool) error {
 			return stream(ctx, seeds, p, send)
 		},

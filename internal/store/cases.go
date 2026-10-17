@@ -178,9 +178,11 @@ func upsertCases(ctx context.Context, q querier, ds []Decision) ([]CaseKey, erro
 		    model_version = CASE WHEN `+takeover+` THEN EXCLUDED.model_version ELSE c.model_version END,
 		    contributions = CASE WHEN `+takeover+` THEN NULL ELSE c.contributions END,
 		    flagged_by    = CASE WHEN `+takeover+` THEN EXCLUDED.flagged_by ELSE c.flagged_by END,
-		    -- A Summary describes one Decision; a takeover makes it stale.
+		    -- A Summary describes one Decision; a takeover makes it stale. One
+		    -- an analyst asked for is written again; otherwise none is.
 		    summary        = CASE WHEN `+takeover+` THEN NULL ELSE c.summary END,
-		    summary_status = CASE WHEN `+takeover+` THEN 'pending' ELSE c.summary_status END,
+		    summary_status = CASE WHEN NOT `+takeover+` THEN c.summary_status
+		                          WHEN c.summary_status = 'none' THEN 'none' ELSE 'pending' END,
 		    action        = GREATEST(c.action, EXCLUDED.action),
 		    updated_at    = now()
 		RETURNING profile, event_id, contributions IS NULL`,
@@ -230,4 +232,7 @@ type CaseContributions struct {
 	Top          []Contribution `json:"top"`
 	Other        float64        `json:"other"` // sum of the rest
 	RawScore     float64        `json:"raw_score"`
+	// Values holds every model feature's value, so the console can show the
+	// payment itself. Cases explained before it was added lack it.
+	Values map[string]any `json:"values,omitempty"`
 }

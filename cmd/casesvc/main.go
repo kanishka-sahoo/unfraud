@@ -202,7 +202,11 @@ func explain(m *model.Model, s *unfraudv1.Scored) store.CaseContributions {
 	slices.SortFunc(idx, func(a, b int) int {
 		return cmp.Or(cmp.Compare(math.Abs(shap[b]), math.Abs(shap[a])), cmp.Compare(a, b))
 	})
-	c := store.CaseContributions{ModelVersion: s.ModelVersion, Stage: int16(s.Stage), Bias: bias, RawScore: s.RawScore}
+	c := store.CaseContributions{ModelVersion: s.ModelVersion, Stage: int16(s.Stage), Bias: bias, RawScore: s.RawScore,
+		Values: make(map[string]any, len(values))}
+	for i, v := range values {
+		c.Values[m.Features[i]] = v
+	}
 	for rank, i := range idx {
 		if rank < topContributions {
 			c.Top = append(c.Top, store.Contribution{Feature: m.Features[i], Value: values[i], SHAP: shap[i]})

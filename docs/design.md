@@ -79,9 +79,9 @@ Services contain no dataset-specific logic.
                                     ▼
                      case-svc (stricter of the two; TreeSHAP) ──► Postgres (CloudNativePG)
                                     │
-                         summarizer ──► OpenRouter
+                         assistant ──► Claude API   (Summaries on request; chat over read-only lookups)
                                     │
-   cases-api (Go, REST + SSE) ◄── Postgres, Kafka tail, Prometheus
+   cases-api (Go, REST + SSE) ◄── Postgres, Kafka tail, Prometheus, assistant
         ▲
    web (Next.js)
 
@@ -97,8 +97,8 @@ Services contain no dataset-specific logic.
 | `scorer` | Go | Horizontal by partitions (one replica in `lite`) | One worker per assigned partition: feature exchange with Valkey (one round trip per Event), model, rules, **Provisional Score** and **Decision**, Shadow Model scoring. Writes `scored.<profile>`. Stateless; Contributions are left to case-svc. |
 | `graph-svc` | Go | Single writer ([ADR-0007](./adr/0007-single-writer-graph-service.md)) | Reads every partition in Event Time order with exact in-memory feature and graph state, and writes **Revised** Decisions to `revised.<profile>` with a graph-aware model ([ADR-0017](./adr/0017-graph-svc-revises-instead-of-serving-graph-features.md)). Recovers by re-reading the input topic. |
 | `case-svc` | Go | Horizontal | Opens and updates **Cases**, computes **Contributions** (Go TreeSHAP) for flagged Events from the model input the scorer attaches, builds **Case Packets**, applies Revisions, stores everything in Postgres. |
-| `summarizer` | Go | Horizontal, rate-limited | Turns Case Packet into **Summary** via OpenRouter, runs the Grounding check, retries, sends failures to the DLQ ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md)). |
-| `cases-api` | Go | Horizontal | REST (OpenAPI) + SSE for the web app. Analyst Dispositions. Replay control (creates replayer Jobs). Model promotion. |
+| `assistant` | Go | One replica, rate-limited | Writes a **Summary** when an analyst asks for one (Case Packet, Claude Haiku, Grounding check, one retry), and answers **Investigations**, the console's assistant chat, with Claude Sonnet over read-only lookups ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md), [ADR-0022](./adr/0022-summaries-on-request-and-investigations.md)). |
+| `cases-api` | Go | Horizontal | REST (OpenAPI) + SSE for the web app. Analyst Dispositions. Replay control (creates replayer Jobs). Model promotion. Forwards Investigations to the assistant. |
 | `web` | Next.js | Horizontal | The analyst and operator UI (§9). |
 | `train` | Python CLI | Batch Job | Turns the feature Parquet into LightGBM models and evaluation reports. Not part of the runtime. |
 
@@ -142,13 +142,16 @@ Latency budget (targets, to be measured): consume → Decision under 10 ms p99 i
 - **Rings and Ring Alerts**: a Community with at least 3 Payers, 2 of them with released fraud, flags its Payers' later Events and revises their Events approved in the previous 7 days. Off unless a Profile enables it after beating the model at equal alert volume on validation.
 - **No GNN in serving** ([ADR-0012](./adr/0012-no-gnn-in-serving.md)).
 
-## 8. Cases and LLM Summaries ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md))
+## 8. Cases, Summaries and the assistant ([ADR-0009](./adr/0009-llm-via-openrouter-off-hot-path.md), [ADR-0022](./adr/0022-summaries-on-request-and-investigations.md))
 
 - **case-svc** (one per Profile) consumes `scored.<profile>` and `revised.<profile>`, stores every Decision (`decisions` table, redeliveries ignored), and opens a **Case** for each flagged Event. A Case keeps the stricter of its Provisional and Revised Decisions and is never made less strict. When a Case opens or becomes stricter, case-svc computes **Contributions** (Go TreeSHAP) with the model that flagged it, matched by model version; it holds both the scorer's and graph-svc's models.
 - The **Case Packet** (`internal/cases`) holds the Decision, rule Reason Codes with descriptions, Entities, and the strongest model factors with plain-language descriptions generated from each feature's declaration. Every raw feature has a published meaning in the Profile's Glossary, so every factor is described. (A feature without one would be combined into a single "anonymized features" effect rather than guessed at.)
-- The **summarizer** claims Cases from a Postgres queue (`FOR UPDATE SKIP LOCKED`, strictest and highest-scoring first, optional rate limit), which is simpler than a Kafka topic for a few thousand Cases and survives restarts (stale claims are requeued).
-- **Drivers**: `stub` (deterministic template, no key, grounded by construction) and `openrouter` (OpenAI-compatible API, `json_schema` output, temperature 0, optional provider pinning with fallbacks off, retries on 429/5xx; the model, provider, tokens and cost OpenRouter reports are stored with each Summary).
+- The packet also carries what an analyst would look up next (`internal/investigate`): the card's alerts and their outcomes over 30 days, the merchant's alerts on any card over 7 days, other cards' alerts at the merchant within 24 hours, the card's network from graph-svc, and both Stages' Decisions.
+- Summaries are written **only when an analyst asks** (ADR-0022): at 1,000+ Events a second, summarizing every blocked Case on arrival spent nearly everything on Cases nobody opens. The **assistant** claims requested Cases from a Postgres queue (`FOR UPDATE SKIP LOCKED`, oldest request first, optional rate limit) and survives restarts (stale claims are requeued). A Summary has four parts: what happened and the pattern, supporting facts, wider context, and what to check next; it never suggests a Disposition.
+- **Drivers** ([ADR-0021](./adr/0021-claude-direct-for-summaries.md)): `anthropic` (the default: Claude Haiku 5.5 through the Messages API, or any Anthropic-compatible API; structured output, `effort: low`), `openai` (any OpenAI-compatible API, `json_schema` output), `openrouter` (the `openai` driver with OpenRouter's cost reporting and optional provider pinning with fallbacks off), and `stub` (deterministic template, no key, grounded by construction). Every Summary stores the model, provider, tokens, cost and latency.
 - **Grounding** (`cases.Ground`): every number in a Summary must be a rounding of a Packet value or a percentage of one (whole numbers up to 10 are allowed for counting words), and every identifier-like token must appear verbatim. An ungrounded Summary is retried once, then stored as `failed` and never shown.
+- **Investigations** (`internal/agent`) are the console's assistant chat. Claude Haiku 5.5 by default (adaptive thinking, `effort: medium`; Sonnet 5.5 also gets a server-side refusal fallback) answers over several steps with six read-only lookups: `get_alert`, `search_alerts`, `card_history`, `merchant_activity`, `card_network`, `related_alerts`, at most 8 per question. Each lookup returns facts for the model and a sentence and table for the console. Messages are stored as the Messages API's own JSON in a `text` column (jsonb would reorder keys, and thinking blocks must go back byte for byte); a rewind (edit and resend, retry) marks later messages superseded rather than deleting them, so the history stays append-only for the API and complete for audit. Every number and ID in an answer is checked against everything looked up (`cases.GroundText`); what fails is marked "not verified" in the console, never hidden. A token budget per Investigation and a limit on questions answered at once bound spend; without `ANTHROPIC_API_KEY` a scripted stub answers.
+- **Published** by `scripts/assistant-report.sh`: questions by outcome, answers with unverified details, lookups per question, tokens and cost per question per model, plus a sample for human grading.
 - **Published** by `scripts/summary-report.sh`: Grounding pass rate, retries, errors, p50/p99 latency and cost per 1k Cases per model, plus a random sample for human grading.
 - The LLM never affects a Decision and is never in the scoring path.
 
@@ -160,14 +163,16 @@ Visual direction: intaglio-ink navy with paper-coloured text; decisions are alwa
 
 | Route | Purpose |
 |---|---|
-| `/{profile}` | **Overview**: Events scored, flag rates per Stage, open Cases, Summaries, Decisions per minute (zero-filled last hour), newest Cases. |
-| `/{profile}/live` | **Live Decisions** over server-sent events (at most 20 a second per browser, with a count of the rest). |
-| `/{profile}/cases` | **Case queue**: status, strictness and order filters in the URL; entity filter. |
-| `/{profile}/cases/{id}` | **Case detail**: the Summary with its Grounding note and model, provider, latency and cost; the **risk ledger** (Contributions opening at the model's base rate and closing at the Case's probability, with a running probability per factor; masked features labelled as such); the Provisional and Revised Decisions; Entities (each a link to that Entity's Cases); Disposition. |
-| `/{profile}/graph/{node}` | **Graph explorer** (Sigma.js + ForceAtlas2): a Payer's neighbourhood through shared Payees, served from graph-svc's live state; released fraud marked. It replaces the planned Ring pages, since Ring Alerts are off (§7). |
+| `/` | **Dashboard**: payments scored, flag rates per Stage, open alerts, Summaries, Decisions per minute (zero-filled last hour), highest-risk open alerts. |
+| `/alerts` | **Alert queue**: status, strictness and order filters in the URL; entity filter. |
+| `/alerts/{id}` | **Alert detail**: the Summary (written on request) with its Grounding note and model, latency and cost; why it was flagged and the full score breakdown; payment details; Decisions from both Stages; Entities (each a link to that Entity's alerts); Disposition. |
+| `/live` | **Live Decisions** over server-sent events (at most 20 a second per browser, with a count of the rest). |
+| `/network`, `/network/{card}` | **Network**: a card's merchants and the cards that share them, from graph-svc's live state; released fraud marked. |
 | `/models` | Model versions in use per Profile and Stage, from the Decisions they made. |
 | `/benchmarks` | The committed `results/` (embedded in cases-api). |
 | `/replay` | Start a replay Job (cases-api creates it through the Kubernetes API with a namespaced Role) and see recent ones. |
+
+The **assistant** is a sidebar on every page, not a route. A conversation opens on what is on screen (an alert, a card, or the whole console), and each alert or card keeps its own conversation in the tab. It streams each lookup as a plain sentence ("Looking at card 77-1's alerts over 30 days"), folds them into "How I worked this out" with the data as tables once the answer arrives, links alert and card IDs in answers, and marks numbers it could not verify. Analysts can stop an answer, edit and resend any earlier question, retry, start a new chat, and reopen earlier conversations. It is written for fraud analysts rather than developers: no tool names, JSON or model internals.
 
 **Dispositions** are stored but never become Labels and never feed metrics or training ([ADR-0011](./adr/0011-dispositions-are-not-labels.md)). Playwright tests (`web/e2e`) run against the deployed console.
 
@@ -186,12 +191,12 @@ What is built and runs on the 4-core, 8 GB reference machine (`lite`, the defaul
 
 - **kind** single-node cluster (`make cluster-up`), images loaded with `kind load` rather than a registry, one Helm chart (`make deploy`, `make deploy-model`).
 - **Operators:** Strimzi (Kafka 4.3 in KRaft mode, one broker with a 512 MB heap) and CloudNativePG (one Postgres instance). Valkey is a plain StatefulSet with append-only persistence and `noeviction`; its expiry is in Event Time, never wall-clock TTLs.
-- **Services:** scorer and graph-svc per Profile (one replica each), case-svc per Profile, one summarizer, cases-api, and the web console (NodePort 30080 on new clusters, `make console` on older ones).
+- **Services:** scorer and graph-svc per Profile (one replica each), case-svc per Profile, one assistant, cases-api, and the web console (NodePort 30080 on new clusters, `make console` on older ones).
 - **Failure handling:** idempotent producers, at-least-once consumers with idempotency Guards on feature state; records that cannot be processed go to `dlq.<profile>` with the error and origin in headers; when Valkey is unreachable the scorer keeps deciding with real-time features missing and marks Decisions `degraded`; graph-svc recovers by re-reading its input. An optional **Shadow Model** scores every Event beside the active one (recorded, never acted on).
-- **Observability:** Prometheus (pods opt in with `prometheus.io/scrape`, 12-hour retention) and Grafana with a provisioned dashboard (`make grafana`): throughput and latency per Stage, degraded and dead-lettered records, Shadow agreement, graph-svc progress, case-svc and summarizer. Kafka and Valkey internals are not scraped.
+- **Observability:** Prometheus (pods opt in with `prometheus.io/scrape`, 12-hour retention) and Grafana with a provisioned dashboard (`make grafana`): throughput and latency per Stage, degraded and dead-lettered records, Shadow agreement, graph-svc progress, case-svc, Summaries and the assistant chat. Kafka and Valkey internals are not scraped.
 - Every pod has a memory limit. With a full pipeline running, the cluster uses about 3.7 GB.
 - A full live replay of TabFormer (9M Events) would take most of a day here, mostly case-svc storing 18M Decisions in Postgres, so the System Run covers the first 1.5M Events (ADR-0019).
-- Secrets (the OpenRouter key) are Kubernetes Secrets created by `make secrets`. Nothing leaves the machine except calls to OpenRouter.
+- Secrets (the LLM API keys) are Kubernetes Secrets that `make secrets` creates from the git-ignored `.env`. Nothing leaves the machine except calls to the LLM provider.
 - Model training runs outside the cluster.
 
 Not built, because none of it could be validated on the reference machine: KEDA autoscaling, a hot-standby graph-svc (graph-svc is a single replica with `Recreate` rollouts and recovers by recomputation instead), OpenTelemetry tracing, and Tilt. `values-full.yaml` raises broker count and partitions but has not been run. Published System Run numbers come from `lite` on the reference machine.
@@ -199,32 +204,41 @@ Not built, because none of it could be validated on the reference machine: KEDA 
 ## 12. Repo layout
 
 ```
-cmd/            replayer, featurize, accuracy, scorer, graphsvc, casesvc, summarizer, casesapi, drift
+cmd/            replayer, featurize, accuracy, scorer, graphsvc, casesvc, assistant, casesapi, drift
 internal/       profile/ (+ tabformer, registry), features/, graph/, rules/, scoring/,
-                model/ (lgbm evaluator + TreeSHAP), align/, replay/, store/, cases/, llm/, api/, dlq/, table/, csvx/
+                model/ (lgbm evaluator + TreeSHAP), align/, replay/, store/, cases/, investigate/, llm/, agent/, api/,
+                dlq/, table/, csvx/
 proto/          buf module (input and scored schemas); gen/ holds the generated Go
 api/            cases-api OpenAPI spec
 web/            Next.js console and Playwright tests
 train/          Python CLI (uv): prepare, train, report, fixture
 deploy/         docker/, helm/unfraud (chart, values, Grafana dashboard), kind/
-scripts/        fetch-data, system-run, summary-report, console-local
+scripts/        fetch-data, system-run, summary-report, assistant-report, console-local
 results/        published results (embedded in cases-api)
 docs/           design.md, adr/
 ```
 
 ## 13. Milestones
 
-All nine are done; see `git log` for what each delivered.
+All are done; see `git log` for what each delivered.
 
 1. **Data foundations:** Profiles, Protobuf schema, replayer, kind + Strimzi, checksummed `make data`.
 2. **Features:** feature engine, Accuracy Run replay to Parquet, first IEEE-CIS model, parity tests in CI.
 3. **Scoring:** scorer with rules, model, TreeSHAP and Decisions; first three rows of the results table.
 4. **Graph:** graph-svc, Revisions, Rings; remaining results rows.
-5. **Cases:** case-svc, Postgres, summarizer with OpenRouter and the stub driver, Grounding metrics.
+5. **Cases:** case-svc, Postgres, summarizer (now the assistant) with OpenRouter and the stub driver, Grounding metrics.
 6. **Web app:** cases-api plus the Next.js app (cases and rings first, then overview, models, benchmarks, replay).
 7. **Hardening:** dead-letter topics, degraded mode, Shadow Models, Prometheus and Grafana, System Runs and paced latency, Playwright end-to-end tests. (KEDA and a standby graph-svc were not built; see §11.)
 8. **Named data:** IEEE-CIS and Elliptic replaced by fully named datasets (ADR-0018), then narrowed to TabFormer alone (ADR-0019).
 9. **Calibration and graph features:** calibrated probabilities, neighbourhood graph features and a recent training window (ADR-0020).
+
+From [ADR-0022](./adr/0022-summaries-on-request-and-investigations.md):
+
+10. **Summaries on request:** the summarizer claims only Cases an analyst asked for; new Cases start at `none`.
+11. **Context layer and Summary v2:** `internal/investigate` (30-day card history, merchant, network, related Cases, Decisions) feeds a sectioned Summary that passes the Grounding check.
+12. **Investigation backend:** the summarizer becomes `assistant`; a multi-step Claude tool loop over read-only tools, SSE through cases-api, `investigations` tables with rewind (superseded messages), stop, retry and token budgets, a stub agent, metrics.
+13. **Assistant sidebar:** on every page, opening on what's on screen; steps shown as plain sentences with data tables and links; edit-and-resend, retry, stop, new chat and earlier Investigations; suggested questions; unverified numbers marked; Playwright tests against the stub.
+14. **Measurement:** Grounding rate for Summaries and chat answers, tool calls per question, cost per Investigation, in `results/`.
 
 ## 14. Open questions
 

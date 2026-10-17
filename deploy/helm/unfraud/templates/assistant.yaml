@@ -1,0 +1,75 @@
+{{- if .Values.assistant.enabled }}
+# Writes Summaries on request and answers the console's assistant chat
+# (ADR-0022). cases-api forwards /api/investigations here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: assistant
+  labels: {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/name: assistant }
+  ports: [{ name: http, port: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant
+  labels:
+    app.kubernetes.io/name: assistant
+    {{- include "unfraud.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: assistant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: assistant
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: assistant
+          image: {{ .Values.image.repository }}/assistant:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -driver={{ .Values.assistant.summaries.driver }}
+            - -model={{ .Values.assistant.summaries.model }}
+            - -base-url={{ .Values.assistant.summaries.baseURL }}
+            - -effort={{ .Values.assistant.summaries.effort }}
+            - -temperature={{ .Values.assistant.summaries.temperature }}
+            - -providers={{ .Values.assistant.summaries.providers }}
+            - -per-minute={{ .Values.assistant.summaries.perMinute }}
+            - -graph-url=http://graphsvc-%s:8080
+            - -agent-model={{ .Values.assistant.chat.model }}
+            - -agent-base-url={{ .Values.assistant.chat.baseURL }}
+            - -agent-effort={{ .Values.assistant.chat.effort }}
+            - -agent-budget={{ int64 .Values.assistant.chat.tokenBudget }}
+            - -agent-concurrency={{ .Values.assistant.chat.concurrency }}
+          env:
+            - name: PG_URL
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.postgres.name }}-app, key: uri }
+            # Keys come from .env through make secrets. All are optional:
+            # without its key a driver writes template summaries, and
+            # without ANTHROPIC_API_KEY the chat answers from a script.
+            {{- range $env, $secret := dict "ANTHROPIC_API_KEY" "anthropic" "OPENAI_API_KEY" "openai" "OPENROUTER_API_KEY" "openrouter" }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef: { name: {{ $secret }}, key: api-key, optional: true }
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.assistant.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+{{- end }}

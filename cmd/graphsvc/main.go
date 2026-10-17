@@ -128,6 +128,7 @@ func run(log *slog.Logger) error {
 		}
 		mu.Lock()
 		sg, ok := sc.Engine().Neighborhood(lastMs, node, hops, 300)
+		sg.AsOf = lastMs
 		mu.Unlock()
 		if !ok {
 			http.Error(w, "this profile has no graph", http.StatusNotFound)

@@ -29,6 +29,20 @@ type Profile struct {
 	// Raw features not in it are anonymized: Case Packets combine them
 	// into one model signal instead of guessing what they mean.
 	Glossary map[string]string
+	// Nouns name Entity types the way analysts say them (payee: merchant),
+	// in feature descriptions.
+	Nouns map[string]string
+	// Meanings spell out coded category values, per feature (an MCC's
+	// merchant type).
+	Meanings map[string]map[string]string
+	// Headline lists the features that describe the payment itself, in the
+	// order the console and Case Packets show them.
+	Headline []string
+	// Subject is the Entity type whose recent history an analyst reviews
+	// with a Case (a card), and Behaviour the features that describe that
+	// history, for Case Packets.
+	Subject   string
+	Behaviour []string
 	// Split divides Event Time for training and evaluation.
 	Split Split
 	// Open starts reading the dataset from dataDir (the Profile's raw folder).

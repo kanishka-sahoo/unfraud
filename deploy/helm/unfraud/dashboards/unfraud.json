@@ -350,7 +350,7 @@
   },
   {
    "type": "timeseries",
-   "title": "Summarizer: Summaries by outcome",
+   "title": "Assistant: Summaries by outcome",
    "gridPos": {
     "w": 12,
     "h": 8,
@@ -390,7 +390,7 @@
   },
   {
    "type": "timeseries",
-   "title": "Summarizer: latency and cost",
+   "title": "Assistant: Summary latency and cost",
    "gridPos": {
     "w": 12,
     "h": 8,
@@ -429,6 +429,96 @@
     {
      "expr": "sum by (model) (unfraud_summarizer_cost_usd_total)",
      "legendFormat": "total cost USD {{model}}",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Assistant: chat questions by status",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 40
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (status) (rate(unfraud_assistant_questions_total[5m]))",
+     "legendFormat": "{{status}}",
+     "refId": "A"
+    },
+    {
+     "expr": "rate(unfraud_assistant_unverified_answers_total[5m])",
+     "legendFormat": "answers with unverified details",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Assistant: chat lookups and cost",
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 40
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "expr": "sum by (tool) (rate(unfraud_assistant_lookups_total[5m]))",
+     "legendFormat": "{{tool}}",
+     "refId": "A"
+    },
+    {
+     "expr": "unfraud_assistant_cost_usd_total",
+     "legendFormat": "cost (USD, cumulative)",
      "refId": "B"
     }
    ]

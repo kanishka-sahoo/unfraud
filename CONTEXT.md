@@ -121,12 +121,16 @@ The structured facts about a Case that a Summary is allowed to draw on.
 _Avoid_: Context, prompt
 
 **Summary**:
-A short narrative of a Case written by an LLM from its Case Packet.
+A short narrative of a Case written by an LLM from its Case Packet, on an analyst's request.
 _Avoid_: Explanation, report
 
 **Grounding**:
 The property that every number and Entity in a Summary appears in its Case Packet. Summaries that fail the check are not shown.
 _Avoid_: Faithfulness (fine as a metric name), accuracy
+
+**Investigation**:
+An analyst's conversation with the assistant, usually starting from a Case or card. The agent may only read: it looks up cards, merchants, the network and related Cases over several steps, and every number in its answers is checked against what it looked up.
+_Avoid_: Chat, session, copilot
 
 **Disposition**:
 An analyst's judgment on a Case (confirmed fraud, dismissed, or escalated). It is never treated as a Label.

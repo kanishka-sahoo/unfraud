@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -55,13 +56,19 @@ type CaseListItem struct {
 	Disposition   *string           `json:"disposition"`
 	SummaryStatus string            `json:"summary_status"`
 	CreatedAt     time.Time         `json:"created_at"`
+	// Values are the Event's feature values, from its Contributions (the top
+	// ones only for Cases explained before all values were stored).
+	Values map[string]any `json:"-"`
 }
 
 const listColumns = `profile, event_id, event_time, entities, action, probability, flagged_by, reason_codes,
-	disposition, summary_status, created_at`
+	disposition, summary_status, created_at,
+	COALESCE(contributions -> 'values',
+	         (SELECT jsonb_object_agg(t ->> 'feature', t -> 'value') FROM jsonb_array_elements(contributions -> 'top') t),
+	         '{}')`
 
 func (s *Store) Overview(ctx context.Context, profile string) (Overview, error) {
-	o := Overview{Profile: profile, Summaries: map[string]int64{}}
+	o := Overview{Profile: profile, Decisions: []DecisionCount{}, Summaries: map[string]int64{}}
 	rows, err := s.Pool.Query(ctx, `SELECT stage, action, count(*) FROM decisions WHERE profile = $1 GROUP BY 1, 2 ORDER BY 1, 2`, profile)
 	if err != nil {
 		return o, err
@@ -173,7 +180,7 @@ func (s *Store) ListCases(ctx context.Context, f CaseFilter) ([]CaseListItem, er
 	for rows.Next() {
 		var c CaseListItem
 		if err := rows.Scan(&c.Profile, &c.EventID, &c.EventTime, &c.Entities, &c.Action, &c.Probability, &c.FlaggedBy,
-			&c.ReasonCodes, &c.Disposition, &c.SummaryStatus, &c.CreatedAt); err != nil {
+			&c.ReasonCodes, &c.Disposition, &c.SummaryStatus, &c.CreatedAt, &c.Values); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -263,4 +270,108 @@ func (s *Store) Profiles(ctx context.Context) ([]string, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// PriorCases returns an Entity's Cases with Event Times in [at-window, at),
+// oldest first, at most limit: what was already flagged on, say, a card
+// when one of its Events was scored.
+func (s *Store) PriorCases(ctx context.Context, profile, entityType, id string, at time.Time, window time.Duration, limit int) ([]CaseListItem, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+listColumns+` FROM cases
+		WHERE profile = $1 AND entities ->> $2 = $3 AND event_time >= $4 AND event_time < $5
+		ORDER BY event_time DESC, event_id DESC LIMIT $6`, profile, entityType, id, at.Add(-window), at, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CaseListItem
+	for rows.Next() {
+		var c CaseListItem
+		if err := rows.Scan(&c.Profile, &c.EventID, &c.EventTime, &c.Entities, &c.Action, &c.Probability, &c.FlaggedBy,
+			&c.ReasonCodes, &c.Disposition, &c.SummaryStatus, &c.CreatedAt, &c.Values); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	slices.Reverse(out) // the newest were kept; show them oldest first
+	return out, rows.Err()
+}
+
+// CaseSearch selects a Profile's Cases for the assistant's lookups.
+type CaseSearch struct {
+	Profile  string
+	Entities map[string]string // every type=id pair must match
+	// From and To bound Event Time, [From, To); zero leaves a side open.
+	From, To  time.Time
+	MinAction int16
+	// Disposition is open, confirmed, dismissed or escalated; empty is any.
+	Disposition string
+	Limit       int
+}
+
+// FindCases returns the newest Cases matching q, at most q.Limit (500 at
+// most), and how many match in all.
+func (s *Store) FindCases(ctx context.Context, q CaseSearch) ([]CaseListItem, int, error) {
+	where := `profile = $1 AND action >= $2`
+	args := []any{q.Profile, q.MinAction}
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	types := make([]string, 0, len(q.Entities))
+	for t := range q.Entities {
+		types = append(types, t)
+	}
+	slices.Sort(types)
+	for _, t := range types {
+		where += ` AND entities ->> ` + arg(t) + ` = ` + arg(q.Entities[t])
+	}
+	if !q.From.IsZero() {
+		where += ` AND event_time >= ` + arg(q.From)
+	}
+	if !q.To.IsZero() {
+		where += ` AND event_time < ` + arg(q.To)
+	}
+	switch q.Disposition {
+	case "":
+	case "open":
+		where += ` AND disposition IS NULL`
+	case "confirmed", "dismissed", "escalated":
+		where += ` AND disposition = ` + arg(q.Disposition)
+	default:
+		return nil, 0, fmt.Errorf("unknown disposition %q", q.Disposition)
+	}
+	if q.Limit <= 0 || q.Limit > 500 {
+		q.Limit = 500
+	}
+	var total int
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM cases WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT `+listColumns+` FROM cases WHERE `+where+
+		fmt.Sprintf(` ORDER BY event_time DESC, event_id DESC LIMIT %d`, q.Limit), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []CaseListItem{}
+	for rows.Next() {
+		var c CaseListItem
+		if err := rows.Scan(&c.Profile, &c.EventID, &c.EventTime, &c.Entities, &c.Action, &c.Probability, &c.FlaggedBy,
+			&c.ReasonCodes, &c.Disposition, &c.SummaryStatus, &c.CreatedAt, &c.Values); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, c)
+	}
+	return out, total, rows.Err()
+}
+
+// LatestEventTime is the Event Time of a Profile's newest Case: "now" in
+// dataset time, for lookups not anchored on a Case.
+func (s *Store) LatestEventTime(ctx context.Context, profile string) (time.Time, error) {
+	var t *time.Time
+	err := s.Pool.QueryRow(ctx, `SELECT max(event_time) FROM cases WHERE profile = $1`, profile).Scan(&t)
+	if err != nil || t == nil {
+		return time.Time{}, err
+	}
+	return *t, nil
 }

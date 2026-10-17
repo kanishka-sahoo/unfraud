@@ -59,6 +59,7 @@ spec:
           args:
             - -brokers={{ include "unfraud.bootstrap" . }}
             - -graph-url=http://graphsvc-%s:8080
+            - -assistant-url={{ if .Values.assistant.enabled }}http://assistant:8080{{ end }}
             - -namespace={{ .Release.Namespace }}
             - -replayer-image={{ .Values.image.repository }}/replayer:{{ .Values.image.tag }}
             - -data-path={{ .Values.replay.dataPath }}

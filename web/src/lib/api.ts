@@ -1,4 +1,5 @@
 import "server-only";
+import { PROFILE } from "./format";
 import type { components } from "./schema";
 
 export type Schemas = components["schemas"];
@@ -23,4 +24,12 @@ export async function api<T>(path: string): Promise<T> {
   if (res.status === 404) throw new NotFound(path);
   if (!res.ok) throw new Error(`cases-api ${path}: ${res.status} ${await res.text()}`);
   return (await res.json()) as T;
+}
+
+export type CaseQuery = { status?: string; min_action?: string; sort?: string; entity?: string; limit?: number; offset?: number };
+
+export function listCases(q: CaseQuery): Promise<CaseListItem[]> {
+  const p = new URLSearchParams({ profile: PROFILE });
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== "") p.set(k, String(v));
+  return api<CaseListItem[]>(`/api/cases?${p}`);
 }

@@ -62,18 +62,19 @@ func (s *Store) GetCase(ctx context.Context, k CaseKey) (Case, error) {
 	return c, err
 }
 
-// ClaimSummaries marks up to n pending Cases (with Contributions, at least
-// minAction) as running and returns them, strictest and highest-scoring
-// first. Concurrent workers never claim the same Case.
-func (s *Store) ClaimSummaries(ctx context.Context, n int, minAction int16) ([]Case, error) {
+// ClaimSummaries marks up to n Cases an analyst asked a Summary for as
+// running and returns them, oldest request first (ADR-0022). Only Cases with
+// Contributions are claimed. Concurrent workers never claim the same Case.
+func (s *Store) ClaimSummaries(ctx context.Context, n int) ([]Case, error) {
 	rows, err := s.Pool.Query(ctx, `
-		UPDATE cases SET summary_status = 'running', summary_attempts = summary_attempts + 1, updated_at = now()
+		UPDATE cases SET summary_status = 'running', summary_attempts = summary_attempts + 1,
+		       summary_requested = false, updated_at = now()
 		WHERE (profile, event_id) IN (
 		    SELECT profile, event_id FROM cases
-		    WHERE summary_status = 'pending' AND contributions IS NOT NULL AND action >= $2
-		    ORDER BY action DESC, probability DESC
+		    WHERE summary_status = 'pending' AND contributions IS NOT NULL
+		    ORDER BY updated_at
 		    LIMIT $1 FOR UPDATE SKIP LOCKED)
-		RETURNING `+caseColumns, n, minAction)
+		RETURNING `+caseColumns, n)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +106,21 @@ func (s *Store) SaveSummary(ctx context.Context, k CaseKey, status string, summa
 func (s *Store) RequeueSummary(ctx context.Context, k CaseKey) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE cases SET summary_status = 'pending', updated_at = now()
 		WHERE profile = $1 AND event_id = $2`, k.Profile, k.EventID)
+	return err
+}
+
+// RequestSummary asks for a Case's Summary to be written again, ahead of
+// the queue. A Case being written now is left alone.
+func (s *Store) RequestSummary(ctx context.Context, k CaseKey) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE cases SET summary_status = 'pending', summary_requested = true, updated_at = now()
+		WHERE profile = $1 AND event_id = $2 AND summary_status <> 'running'`, k.Profile, k.EventID)
+	if err == nil && tag.RowsAffected() == 0 {
+		var exists bool
+		if err = s.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM cases WHERE profile = $1 AND event_id = $2)`,
+			k.Profile, k.EventID).Scan(&exists); err == nil && !exists {
+			err = ErrNotFound
+		}
+	}
 	return err
 }
 

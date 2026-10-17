@@ -9,8 +9,8 @@ const W = 1100, H = 240, L = 56, R = 90, T = 12, B = 26;
 /** Decisions per minute by Stage over the last hour (one shared axis). */
 export function Throughput({ data }: { data: Point[] }) {
   const [hover, setHover] = useState<number | null>(null);
-  if (data.length === 0) {
-    return <p className="empty">No Decisions in the last hour. Start a replay to see throughput.</p>;
+  if (data.every((d) => d.provisional === 0 && d.revised === 0)) {
+    return <p className="empty">No decisions in the last hour. Replay data to see throughput.</p>;
   }
   const max = Math.max(1, ...data.flatMap((d) => [d.provisional, d.revised]));
   const step = niceStep(max);
@@ -31,10 +31,6 @@ export function Throughput({ data }: { data: Point[] }) {
   const h = hover === null ? null : data[hover];
   return (
     <div className="chart">
-      <div className="legend">
-        <span><span className="key" style={{ background: "var(--series-1)" }} />On arrival</span>
-        <span><span className="key" style={{ background: "var(--series-2)" }} />Graph revision</span>
-      </div>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Decisions per minute over the last hour, on arrival and after graph revision">
         <g className="grid">
           {ticks.map((t) => <line key={t} x1={L} x2={W - R} y1={y(t)} y2={y(t)} />)}
@@ -48,17 +44,17 @@ export function Throughput({ data }: { data: Point[] }) {
         <path d={line("revised")} fill="none" stroke="var(--series-2)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {(["provisional", "revised"] as const).map((k, i) => (
           <g key={k}>
-            <circle cx={x(last)} cy={y(data[last][k])} r="4" fill={`var(--series-${i + 1})`} stroke="var(--ink)" strokeWidth="2" />
-            <text x={x(last) + 8} y={y(data[last][k]) + 4 + (i === 1 && Math.abs(y(data[last].provisional) - y(data[last].revised)) < 12 ? 12 : 0)} fill="var(--paper-2)" fontSize="11">
+            <circle cx={x(last)} cy={y(data[last][k])} r="4" fill={`var(--series-${i + 1})`} stroke="var(--surface)" strokeWidth="2" />
+            <text x={x(last) + 8} y={y(data[last][k]) + 4 + (i === 1 && Math.abs(y(data[last].provisional) - y(data[last].revised)) < 12 ? 12 : 0)} fill="var(--text-2)" fontSize="11">
               {data[last][k].toLocaleString("en-US")}/min
             </text>
           </g>
         ))}
         {h && hover !== null && (
           <g>
-            <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="var(--paper-2)" strokeWidth="1" />
-            <circle cx={x(hover)} cy={y(h.provisional)} r="4" fill="var(--series-1)" stroke="var(--ink)" strokeWidth="2" />
-            <circle cx={x(hover)} cy={y(h.revised)} r="4" fill="var(--series-2)" stroke="var(--ink)" strokeWidth="2" />
+            <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="var(--text-2)" strokeWidth="1" />
+            <circle cx={x(hover)} cy={y(h.provisional)} r="4" fill="var(--series-1)" stroke="var(--surface)" strokeWidth="2" />
+            <circle cx={x(hover)} cy={y(h.revised)} r="4" fill="var(--series-2)" stroke="var(--surface)" strokeWidth="2" />
           </g>
         )}
         <rect x={L} y={T} width={W - L - R} height={H - T - B} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />

@@ -53,6 +53,13 @@ paths:
         "200": { description: Recorded }
         "400": { description: Invalid disposition }
         "404": { description: No such Case }
+  /api/cases/{profile}/{event_id}/summary:
+    post:
+      description: Ask for the Case's Summary to be written (Summaries are written only on request, ADR-0022).
+      parameters: [{ $ref: "#/components/parameters/profile" }, { $ref: "#/components/parameters/event_id" }]
+      responses:
+        "200": { description: Queued }
+        "404": { description: No such Case }
   /api/graph/{profile}/{node}:
     get:
       parameters:
@@ -95,6 +102,55 @@ paths:
       responses:
         "200": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Replay" } } } }
         "409": { description: A replay is already running }
+  /api/investigations:
+    get:
+      description: A Profile's Investigations (assistant conversations) with at least one question, newest first.
+      parameters:
+        - { name: profile, in: query, required: true, schema: { type: string } }
+        - { name: case_id, in: query, schema: { type: string }, description: "Only those opened on this Case" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Investigation" } } } } }
+    post:
+      description: Open an Investigation on a Case, a card, or neither (ADR-0022).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile]
+              properties:
+                profile: { type: string }
+                case_id: { type: string }
+                card: { type: string }
+      responses:
+        "200": { description: Opened, content: { application/json: { schema: { $ref: "#/components/schemas/InvestigationView" } } } }
+        "404": { description: No such Case }
+  /api/investigations/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/InvestigationView" } } } }
+        "404": { description: No such Investigation }
+  /api/investigations/{id}/ask:
+    post:
+      description: >
+        Ask a question, answered as server-sent events (AssistantEvent): question, a step event as each lookup starts and
+        ends, text as the answer is written, then done with the finished turn, or error. from_seq rewinds first: the
+        messages from that question on are set aside (kept for audit) and this question replaces them.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string }
+                from_seq: { type: integer }
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { $ref: "#/components/schemas/AssistantEvent" } } } }
 components:
   parameters:
     profile: { name: profile, in: path, required: true, schema: { type: string } }
@@ -144,8 +200,17 @@ components:
         flagged_by: { $ref: "#/components/schemas/Stage" }
         reason_codes: { type: array, items: { type: string } }
         disposition: { type: [string, "null"], enum: [confirmed, dismissed, escalated, null] }
-        summary_status: { type: string, enum: [pending, running, done, failed, skipped] }
+        summary_status: { type: string, enum: [none, pending, running, done, failed, skipped] }
         created_at: { type: string, format: date-time }
+        payment: { type: array, description: "The payment's headline facts (not on Case)", items: { $ref: "#/components/schemas/Fact" } }
+    Fact:
+      type: object
+      required: [feature, description]
+      properties:
+        feature: { type: string }
+        description: { type: string }
+        value: { description: "number, category, or null when missing" }
+        meaning: { type: string, description: "what a coded value stands for, such as an MCC's merchant type" }
     Contribution:
       type: object
       required: [feature, shap]
@@ -163,15 +228,18 @@ components:
         top: { type: array, items: { $ref: "#/components/schemas/Contribution" } }
         other: { type: number }
         raw_score: { type: number }
+        values: { type: object, additionalProperties: {} }
     Factor:
       type: object
       required: [feature, description, effect]
-      properties: { feature: { type: string }, description: { type: string }, value: {}, effect: { type: number } }
+      properties: { feature: { type: string }, description: { type: string }, value: {}, meaning: { type: string }, effect: { type: number } }
     Summary:
       type: [object, "null"]
       properties:
         summary: { type: string }
         key_points: { type: [array, "null"], items: { type: string } }
+        context: { type: [array, "null"], items: { type: string }, description: "What the card's history, the merchant and the network add" }
+        checks: { type: [array, "null"], items: { type: string }, description: "What to check next" }
         grounded: { type: boolean }
         problems: { type: array, items: { type: string } }
         attempts: { type: integer }
@@ -190,6 +258,7 @@ components:
         packet:
           type: object
           properties:
+            payment: { type: [array, "null"], items: { $ref: "#/components/schemas/Fact" } }
             model_factors: { type: [array, "null"], items: { $ref: "#/components/schemas/Factor" } }
             anonymized_features: { oneOf: [{ $ref: "#/components/schemas/Factor" }, { type: "null" }] }
             rule_reasons: { type: array, items: { type: object, properties: { code: { type: string }, description: { type: string } } } }
@@ -223,15 +292,17 @@ components:
         ingested_at: { type: string, format: date-time }
     CaseDetail:
       type: object
-      required: [case, decisions]
+      required: [case, decisions, facts]
       properties:
         case: { $ref: "#/components/schemas/Case" }
         decisions: { type: array, items: { $ref: "#/components/schemas/Decision" } }
+        facts: { type: array, description: "The Event's described feature values, the payment's first", items: { $ref: "#/components/schemas/Fact" } }
     Subgraph:
       type: object
       required: [center, nodes, edges, truncated]
       properties:
         center: { type: string }
+        as_of_ms: { type: integer, description: "Event Time the graph has reached (Unix ms); the neighbourhood is the one at that time" }
         truncated: { type: boolean }
         nodes:
           type: array
@@ -284,3 +355,78 @@ components:
         status: { type: string, enum: [running, succeeded, failed] }
         started_at: { type: string, format: date-time }
         ended_at: { type: [string, "null"], format: date-time }
+    Investigation:
+      type: object
+      required: [id, profile, case_id, card, title, created_at, updated_at]
+      properties:
+        id: { type: string }
+        profile: { type: string }
+        case_id: { type: [string, "null"] }
+        card: { type: [string, "null"] }
+        title: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    InvestigationView:
+      allOf:
+        - { $ref: "#/components/schemas/Investigation" }
+        - type: object
+          required: [turns, suggestions, tokens_used, token_budget, model]
+          properties:
+            turns: { type: array, items: { $ref: "#/components/schemas/Turn" } }
+            suggestions: { type: array, items: { type: string } }
+            tokens_used: { type: integer }
+            token_budget: { type: integer, description: "0 is no limit" }
+            model: { type: string, description: "stub when no API key is set" }
+    Turn:
+      type: object
+      required: [seq, question, asked_at, steps, answer, status, unverified, links, cost_usd, tokens]
+      properties:
+        seq: { type: integer }
+        question: { type: string }
+        asked_at: { type: string, format: date-time }
+        steps: { type: array, items: { $ref: "#/components/schemas/Step" } }
+        answer: { type: string }
+        status: { type: string, enum: [answered, stopped, error, refused, pending] }
+        unverified: { type: array, items: { type: string }, description: "Numbers and IDs in the answer that nothing looked up contains" }
+        links: { type: object, additionalProperties: { type: string }, description: "IDs in the answer and the console page each links to" }
+        model: { type: string }
+        cost_usd: { type: number }
+        tokens: { type: integer }
+    Step:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        tool: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [running, done, error, note] }
+        summary: { type: string }
+        error: { type: string }
+        note: { type: string }
+        table:
+          type: object
+          required: [columns, rows]
+          properties:
+            columns: { type: array, items: { type: string } }
+            rows:
+              type: array
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [text]
+                  properties:
+                    text: { type: string }
+                    href: { type: string }
+                    tone: { type: string, enum: [high, elevated, low] }
+            more: { type: integer }
+    AssistantEvent:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [question, step, text, done, error] }
+        seq: { type: integer }
+        step: { $ref: "#/components/schemas/Step" }
+        text: { type: string }
+        turn: { $ref: "#/components/schemas/Turn" }
+        message: { type: string }

@@ -1,6 +1,6 @@
 # unfraud
 
-A real-time fraud detection engine that runs on a laptop. Card payments stream through Kafka into a Go scorer that combines real-time features, fast rules and a LightGBM model; a single-writer graph service links cards that use the same merchants and revises decisions with graph features; flagged payments become cases with TreeSHAP explanations and grounded LLM summaries; a Next.js console shows it all. Everything runs on local Kubernetes, and every number below is regenerated from a public dataset by the commands in this repository.
+A real-time fraud detection engine that runs on a laptop. Card payments stream through Kafka into a Go scorer that combines real-time features, fast rules and a LightGBM model; a single-writer graph service links cards that use the same merchants and revises decisions with graph features; flagged payments become cases with TreeSHAP explanations, grounded LLM summaries on request, and an assistant that investigates them with read-only lookups; a Next.js console shows it all. Everything runs on local Kubernetes, and every number below is regenerated from a public dataset by the commands in this repository.
 
 The data is [IBM TabFormer](https://github.com/IBM/TabFormer): 9 million simulated card payments by 2,000 cardholders over five years, with every column named ([ADR-0018](docs/adr/0018-named-payment-datasets.md), [ADR-0019](docs/adr/0019-tabformer-only.md)).
 
@@ -31,7 +31,7 @@ Time split: January 2015 to September 2018 trains, October–December 2018 valid
 **The running system** (4-core, 8 GB laptop, `lite` profile):
 
 - The first 1.5M payments replayed into Kafka and scored in the cluster by one scorer pod at 468 a second from a backlog, with features in Valkey. 93.8% of probabilities are bit-identical to the offline Accuracy Run (the rest differ by at most 0.23, 2.1e-6 at p99), and 116 of 1,500,000 decisions differ: partitions run in parallel against shared feature state.
-- graph-svc revises every payment with graph features from one ordered stream; case-svc keeps the stricter decision per case. 49,493 cases, every one explained (TreeSHAP) and summarized, with no case-invariant violations (`make check-cases`).
+- graph-svc revises every payment with graph features from one ordered stream; case-svc keeps the stricter decision per case. 49,493 cases, every one explained (TreeSHAP), with no case-invariant violations (`make check-cases`).
 
 ## Run it
 
@@ -60,7 +60,7 @@ make grafana                           # http://localhost:3001
 make tailscale                         # or serve both on this machine's Tailscale IP, across reboots
 ```
 
-Summaries use a template writer unless you add an OpenRouter key: put it in `~/.config/unfraud/openrouter_key`, run `make secrets`, and deploy with `--set summarizer.driver=openrouter`. `scripts/summary-report.sh` then reports grounding rate, latency and cost per model. `make help` lists every target.
+Add an API key to turn on the LLM features: copy `.env.example` to `.env` in the repository root, set `ANTHROPIC_API_KEY`, and run `make secrets` (`.env` is git-ignored). An alert's Summary is written by Claude Haiku 5.5 when you press "Write summary"; nothing is summarized unasked, since the engine flags far more alerts than anyone reads. The assistant sidebar on every page answers questions about an alert, a card or the whole console with Claude Haiku 5.5, looking things up over several steps and showing each one ([ADR-0022](docs/adr/0022-summaries-on-request-and-investigations.md)). Without a key, Summaries come from a template writer and the assistant from a script. Summaries also work with any Anthropic-compatible API (`--set assistant.summaries.baseURL=...`), any OpenAI-compatible one (`--set assistant.summaries.driver=openai,assistant.summaries.baseURL=http://host/v1,assistant.summaries.model=...` with `OPENAI_API_KEY`) and OpenRouter (`--set assistant.summaries.driver=openrouter,assistant.summaries.model=anthropic/claude-haiku-5.5` with `OPENROUTER_API_KEY`) ([ADR-0021](docs/adr/0021-claude-direct-for-summaries.md)). `scripts/summary-report.sh` and `scripts/assistant-report.sh` report grounding, latency and cost per model. `make help` lists every target.
 
 ## What it does not do
 
@@ -68,4 +68,4 @@ Summaries use a template writer unless you add an OpenRouter key: put it in `~/.
 - The data is simulated. The metrics say how well the engine finds TabFormer's fraud, not how it would do on a real bank's traffic, and the simulator makes some of it easy (73% of transactions in Italy are fraud).
 - The live demo replays the first 1.5M of 9M payments. All of them would take most of a day on the reference machine, mostly case-svc writing 18M decisions to Postgres; the published metrics come from the offline Accuracy Run over all of them.
 - It is local-only: no authentication, one Kafka broker, one replica per service. KEDA autoscaling, a hot-standby graph service and tracing are designed but not built, because they could not be validated on the reference machine.
-- Real-LLM summary quality has not been measured yet (no key was available while building); the grounding check and the reporting are in place.
+- Real-LLM quality has not been measured on the TabFormer cluster yet: Summaries and the assistant were checked by hand on a few synthetic alerts, not graded at scale. The grounding checks and the reports (`scripts/summary-report.sh`, `scripts/assistant-report.sh`) are in place.

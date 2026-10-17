@@ -7,7 +7,10 @@ import (
 
 // Subgraph is a Node's neighbourhood, for the web app's graph explorer.
 type Subgraph struct {
-	Center    string  `json:"center"`
+	Center string `json:"center"`
+	// AsOf is the Event Time the graph has reached, in Unix milliseconds;
+	// the neighbourhood is the one at that time, not at any Event's.
+	AsOf      int64   `json:"as_of_ms,omitempty"`
 	Nodes     []GNode `json:"nodes"`
 	Edges     []GEdge `json:"edges"`
 	Truncated bool    `json:"truncated"`
@@ -88,7 +91,12 @@ func (g *Graph) Neighborhood(t int64, node string, hops, maxNodes int) Subgraph 
 		add(l.node, l.attr)
 		add(l.attr, l.node)
 	}
+	// Super-nodes are not linked through (MaxDegree), so their other Nodes
+	// are not part of the neighbourhood either.
 	nodes, edges, truncated := bfs(node, hops, maxNodes, func(n string) []string {
+		if len(g.degree[n]) > g.cfg.MaxDegree {
+			return nil
+		}
 		var out []string
 		for m := range adj[n] {
 			out = append(out, m)

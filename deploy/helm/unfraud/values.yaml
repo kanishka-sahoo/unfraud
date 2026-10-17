@@ -68,17 +68,39 @@ cases:
     requests: { cpu: 200m, memory: 192Mi }
     limits: { memory: 192Mi }
 
-summarizer:
+assistant:
   enabled: true
-  # stub needs no key; openrouter needs the openrouter Secret (make secrets).
-  driver: stub
-  model: anthropic/claude-haiku-4.5
-  providers: ""
-  minAction: 1
-  perMinute: 0
+  # Summaries, written only when an analyst asks (ADR-0022).
+  summaries:
+    # anthropic: the Claude API, or any Anthropic-compatible API at baseURL.
+    # openai: any OpenAI-compatible API at baseURL (OpenAI, vLLM, Ollama...).
+    # openrouter: OpenRouter, with model ids such as anthropic/claude-haiku-5.5.
+    # stub: template summaries, no key. Keys come from .env (make secrets);
+    # without one, a driver writes template summaries (ADR-0021).
+    driver: anthropic
+    model: claude-haiku-5-5
+    baseURL: ""
+    # anthropic only; "" leaves the model's default. Summaries need little thought.
+    effort: low
+    # openai and openrouter only; "" sends none (Claude 5 models reject others).
+    temperature: ""
+    providers: ""
+    # Caps spend if many are requested at once.
+    perMinute: 30
+  # The assistant chat (Investigations): Claude only, with ANTHROPIC_API_KEY;
+  # without it a scripted stub answers.
+  chat:
+    # Haiku keeps the chat fast and cheap; claude-sonnet-5-5 reasons further.
+    model: claude-haiku-5-5
+    baseURL: ""
+    effort: medium
+    # Most tokens one conversation may use; 0 = no limit.
+    tokenBudget: 400000
+    # Questions answered at once; more are asked to retry.
+    concurrency: 4
   resources:
-    requests: { cpu: 50m, memory: 48Mi }
-    limits: { memory: 64Mi }
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
 
 graph:
   goMemLimit: 600MiB

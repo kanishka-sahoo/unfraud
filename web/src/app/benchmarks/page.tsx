@@ -9,7 +9,7 @@ const order = ["tabformer-lightgbm", "summaries-stub"];
 export default function BenchmarksPage() {
   return (
     <>
-      <div className="page-head">
+      <div className="head">
         <div>
           <h1>Benchmarks</h1>
           <p>Every number here is regenerated from a public dataset by the commands in the repository; nothing is typed by hand.</p>
@@ -28,8 +28,8 @@ async function Results() {
   return (
     <>
       {all.map((b) => (
-        <section key={b.name} className="section md" id={b.name}>
-          <div dangerouslySetInnerHTML={{ __html: marked.parse(b.markdown, { async: false }) }} />
+        <section key={b.name} className="card md" id={b.name} style={{ marginBottom: 16 }}>
+          <div className="body" dangerouslySetInnerHTML={{ __html: marked.parse(b.markdown, { async: false }) }} />
         </section>
       ))}
     </>

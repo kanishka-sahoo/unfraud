@@ -11,11 +11,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/kanishka-sahoo/unfraud/internal/cases"
+	"github.com/kanishka-sahoo/unfraud/internal/profile/registry"
 	"github.com/kanishka-sahoo/unfraud/internal/store"
 	"github.com/kanishka-sahoo/unfraud/results"
 )
@@ -30,6 +33,9 @@ type Config struct {
 	Stream func(ctx context.Context, profile string, send func(LiveDecision) bool) error
 	// Replays creates and lists replay Jobs; nil disables replay control.
 	Replays Replays
+	// AssistantURL is the assistant service's base URL, which answers
+	// Investigations; empty turns the assistant off.
+	AssistantURL string
 }
 
 // Replays is implemented against the Kubernetes API (kube.go).
@@ -73,10 +79,15 @@ func Handler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("GET /api/cases/{profile}/{event_id}", h.getCase)
 	mux.HandleFunc("POST /api/cases/{profile}/{event_id}/disposition", h.dispose)
+	mux.HandleFunc("POST /api/cases/{profile}/{event_id}/summary", h.requestSummary)
 	mux.HandleFunc("GET /api/graph/{profile}/{node}", h.graph)
 	mux.HandleFunc("GET /api/models", h.models)
 	mux.HandleFunc("GET /api/benchmarks", h.benchmarks)
 	mux.HandleFunc("GET /api/stream/{profile}", h.stream)
+	mux.HandleFunc("POST /api/investigations", h.assistant)
+	mux.HandleFunc("GET /api/investigations", h.assistant)
+	mux.HandleFunc("GET /api/investigations/{id}", h.assistant)
+	mux.HandleFunc("POST /api/investigations/{id}/ask", h.assistant)
 	mux.HandleFunc("GET /api/replays", h.listReplays)
 	mux.HandleFunc("POST /api/replays", h.startReplay)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -105,7 +116,33 @@ func (h *handler) profiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) overview(w http.ResponseWriter, r *http.Request) {
 	o, err := h.cfg.Store.Overview(r.Context(), r.PathValue("profile"))
-	h.reply(w, o, err)
+	h.reply(w, struct {
+		store.Overview
+		Recent []caseItem `json:"recent_cases"`
+	}{o, withPayment(o.Recent)}, err)
+}
+
+// caseItem is a queue row with the payment it is about.
+type caseItem struct {
+	store.CaseListItem
+	Payment []cases.Fact `json:"payment"`
+}
+
+func withPayment(cs []store.CaseListItem) []caseItem {
+	out := make([]caseItem, len(cs))
+	for i, c := range cs {
+		out[i] = caseItem{CaseListItem: c, Payment: []cases.Fact{}}
+		p, err := registry.Get(c.Profile)
+		if err != nil {
+			continue
+		}
+		for _, f := range cases.Facts(p, &store.CaseContributions{Values: c.Values}) {
+			if slices.Contains(p.Headline, f.Feature) {
+				out[i].Payment = append(out[i].Payment, f)
+			}
+		}
+	}
+	return out
 }
 
 func (h *handler) listCases(w http.ResponseWriter, r *http.Request) {
@@ -125,12 +162,14 @@ func (h *handler) listCases(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h.reply(w, cs, err)
+	h.reply(w, withPayment(cs), err)
 }
 
 type caseDetail struct {
 	Case      store.Case       `json:"case"`
 	Decisions []store.Decision `json:"decisions"`
+	// Facts describe the Event's feature values, the payment's first.
+	Facts []cases.Fact `json:"facts"`
 }
 
 func (h *handler) getCase(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +180,19 @@ func (h *handler) getCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ds, err := h.cfg.Store.EventDecisions(r.Context(), k)
-	h.reply(w, caseDetail{Case: c, Decisions: ds}, err)
+	d := caseDetail{Case: c, Decisions: ds, Facts: []cases.Fact{}}
+	if p, perr := registry.Get(c.Profile); perr == nil {
+		if fs := cases.Facts(p, c.Contributions); fs != nil {
+			d.Facts = fs
+		}
+	}
+	h.reply(w, d, err)
+}
+
+func (h *handler) requestSummary(w http.ResponseWriter, r *http.Request) {
+	k := store.CaseKey{Profile: r.PathValue("profile"), EventID: r.PathValue("event_id")}
+	err := h.cfg.Store.RequestSummary(r.Context(), k)
+	h.reply(w, map[string]string{"summary_status": "pending"}, err)
 }
 
 func (h *handler) dispose(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +237,51 @@ func (h *handler) graph(w http.ResponseWriter, r *http.Request) {
 	for {
 		n, err := res.Body.Read(buf)
 		w.Write(buf[:n])
+		if err != nil {
+			return
+		}
+	}
+}
+
+// assistant forwards Investigations to the assistant service, streaming
+// answers through as they are written.
+func (h *handler) assistant(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.AssistantURL == "" {
+		http.Error(w, "the assistant is off", http.StatusNotImplemented)
+		return
+	}
+	u := h.cfg.AssistantURL + strings.TrimPrefix(r.URL.Path, "/api")
+	if r.URL.RawQuery != "" {
+		u += "?" + r.URL.RawQuery
+	}
+	req, _ := http.NewRequestWithContext(r.Context(), r.Method, u, http.MaxBytesReader(w, r.Body, 1<<15))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if r.Context().Err() == nil {
+			http.Error(w, "the assistant is unavailable", http.StatusBadGateway)
+		}
+		return
+	}
+	defer res.Body.Close()
+	for _, k := range []string{"Content-Type", "Cache-Control", "X-Accel-Buffering"} {
+		if v := res.Header.Get(k); v != "" {
+			w.Header().Set(k, v)
+		}
+	}
+	w.WriteHeader(res.StatusCode)
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 16<<10)
+	for {
+		n, err := res.Body.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
 		if err != nil {
 			return
 		}
