@@ -80,6 +80,7 @@ var Profile = profile.Profile{
 		"mcc":     mccMeanings,
 		"channel": {"in_person": "in person"},
 	},
+	Amount:   "amount_usd",
 	Headline: []string{"amount_usd", "mcc", "channel", "entry_mode", "merchant_state", "errors", "card_brand", "card_type"},
 	Subject:  Payer,
 	Behaviour: []string{"payer_count_1h", "payer_count_24h", "payer_count_7d", "payer_amount_24h", "payer_amount_7d",

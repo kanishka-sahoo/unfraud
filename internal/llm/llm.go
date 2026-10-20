@@ -38,9 +38,10 @@ What makes a brief useful:
 - You may name a common fraud pattern, such as card testing (tiny charges before larger ones), cash-out through money transfers, a compromised merchant (many cards flagged at one merchant), or a refund after a large charge, only when specific facts in the record show it; say which facts, mind their order in time, and say they are consistent with the pattern, never that it is certain. Never add facts.
 - Analyst outcomes (confirmed fraud, dismissed, escalated) are other analysts' judgments; cards with confirmed fraud in the network are confirmed cases. Say which you mean.
 - Use merchant types, not codes (the code may follow in brackets). Describe model factors by what they mean, never by feature names, and never mention log-odds, effects or SHAP.
+- A payment whose amount is negative is a refund: money returned to the card, not a purchase. Call it a refund of the amount ("a $361.00 refund"), never a payment or a charge, and do not read negative totals or ratios as spending.
 - Mention the fraud probability once, as fraud_probability_percent gives it.
 - Write amounts as dollars ($1,631.26). Quote every number exactly as the record gives it; do not round. Copy card, merchant and alert IDs exactly.
-- Put raw units in words: a ratio of 0.0155 as 1.55% (or 12.3 as 12.3 times), seconds as roughly how many minutes, hours or days ("about 7 hours").
+- Put raw units in words: a ratio of 0.0155 as 1.55% (or 12.3 as 12.3 times), seconds as the meaning beside them gives them ("39 minutes", "about 7 hours").
 
 Do not:
 - refer to "the record", "the packet" or the JSON;
@@ -125,6 +126,9 @@ func payment(facts []cases.Fact) string {
 		return ""
 	}
 	s := "A payment of $" + strconv.FormatFloat(amount, 'f', 2, 64)
+	if amount < 0 {
+		s = "A refund of $" + strconv.FormatFloat(-amount, 'f', 2, 64)
+	}
 	if m := by["mcc"]; m.Meaning != "" {
 		s += " at " + m.Meaning + " (merchant category " + plain(m.Value) + ")"
 	}

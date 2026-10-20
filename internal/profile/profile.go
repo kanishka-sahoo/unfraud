@@ -35,6 +35,9 @@ type Profile struct {
 	// Meanings spell out coded category values, per feature (an MCC's
 	// merchant type).
 	Meanings map[string]map[string]string
+	// Amount is the raw feature holding the payment amount; a negative
+	// amount is a refund (TabFormer has them), and Case Packets say so.
+	Amount string
 	// Headline lists the features that describe the payment itself, in the
 	// order the console and Case Packets show them.
 	Headline []string

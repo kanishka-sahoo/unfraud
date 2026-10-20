@@ -2,6 +2,7 @@ package cases
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,5 +72,52 @@ func TestBuildSummarizesTheCardsEarlierAlerts(t *testing.T) {
 	// Quoting the precomputed totals passes Grounding.
 	if p := Ground("The card had 2 earlier alerts worth $553.46, 1 blocked, including $500 at a hotel.", pk); len(p) > 0 {
 		t.Errorf("grounding problems %v", p)
+	}
+}
+
+// Alert 24076688: a brief saying the payment came "39 minutes" after the
+// previous one was hidden, because the record only had 2340 seconds.
+func TestBuildSpellsOutSecondsSoBriefsCanQuoteThem(t *testing.T) {
+	c := store.Case{
+		Profile: "tabformer", EventID: "24076688", EventTime: time.Date(2014, 10, 1, 18, 56, 0, 0, time.UTC),
+		Entities: map[string]string{"payer": "1974-0"}, Action: 2, Probability: 0.9882, FlaggedBy: 1,
+		Contributions: &store.CaseContributions{
+			Top:    []store.Contribution{{Feature: "payer_since_last", Value: 2340.0, SHAP: 1.238}},
+			Values: map[string]any{"payer_since_last": 2340.0, "amount_usd": 112.53},
+		},
+	}
+	pk, err := Build(tabformer.Profile, c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := pk.Factors[0]; f.Meaning != "39 minutes" {
+		t.Errorf("payer_since_last factor %+v, want meaning 39 minutes", f)
+	}
+	if p := Ground("This payment came 39 minutes after the previous one.", pk); len(p) > 0 {
+		t.Errorf("unexpected problems %v", p)
+	}
+}
+
+// Alert 18255905: a -$361.00 refund was briefed as "a $361 online payment",
+// because nothing in the record said a negative amount is a refund.
+func TestBuildMarksNegativeAmountsAsRefunds(t *testing.T) {
+	c := store.Case{
+		Profile: "tabformer", EventID: "18255905", EventTime: time.Date(2015, 4, 11, 7, 41, 0, 0, time.UTC),
+		Entities: map[string]string{"payer": "1474-3"}, Action: 2, Probability: 0.938, FlaggedBy: 2,
+		Contributions: &store.CaseContributions{
+			Top: []store.Contribution{{Feature: "payer_amount_ratio_30d", Value: -7.2287, SHAP: 1.1}},
+			Values: map[string]any{"amount_usd": -361.0, "payer_amount_ratio_30d": -7.2287,
+				"payer_since_last": 259200.0},
+		},
+	}
+	pk, err := Build(tabformer.Profile, c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := pk.Payment[0]; f.Feature != "amount_usd" || !strings.Contains(f.Meaning, "refund") {
+		t.Errorf("amount fact %+v does not say it is a refund", f)
+	}
+	if f := pk.Factors[0]; !strings.Contains(f.Meaning, "refund") {
+		t.Errorf("amount ratio factor %+v does not say it is a refund", f)
 	}
 }
